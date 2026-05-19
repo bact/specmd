@@ -17,7 +17,63 @@
 
 - Generated Markdown output must pass markdownlint-cli2.
 - Primarily intended for MkDocs consumption (MkDocs uses Python-Markdown).
-- It could also be assumed by Pandoc for the generation of other formats.
+- The `singlefile` format outputs a single Markdown file suitable for downstream
+  conversion (e.g. via Pandoc to Word or PDF); specmd itself does not invoke Pandoc for it.
+- The `tex` format does invoke Pandoc internally to convert Markdown fragments to LaTeX.
+- Generated file headers: YAML front matter (not HTML comments). Omit optional
+  fields (e.g. `SPDX-License-Identifier`) when value is empty or blank.
+- Do not hardcode license or metadata values in templates; read from model
+  (e.g. `Model.spdx_license`).
+- markdownlint config bundled at `src/specmd/generate/markdownlint-cli2.yaml`;
+  copied to each output directory by `_write_markdownlint_config()` so consumers
+  can run `markdownlint-cli2 "**/*.md"` without extra config.
+  - File must be named `.markdownlint-cli2.yaml` (dot-prefixed, full format)
+    to be auto-detected and to support the `ignores` key.
+    `markdownlint.yaml` (no dot) is not auto-detected.
+
+## Jinja2 templates
+
+Templates live in `src/specmd/generate/templates/{format}/`.
+All environments use `trim_blocks=True, lstrip_blocks=True`.
+
+### Whitespace gotchas
+
+`trim_blocks` eats only the `\n` immediately after `%}`. Blank lines
+before or after block tags are preserved in output, producing double-blank
+lines if not handled carefully.
+
+**Rule:** Move the blank separator INSIDE the conditional block, at the start
+(before the heading or content), not outside it.
+
+```jinja2
+{# Wrong — blank line always emitted, even when block renders nothing #}
+
+{% if items %}
+## Items
+{% endif %}
+
+{# Correct — blank only when block renders #}
+{% if items %}
+
+## Items
+{% endif %}
+```
+
+**List items:** `{% endif %}` at end-of-line consumes the trailing `\n` via
+`trim_blocks`, collapsing all list items onto one line. Use the capture pattern:
+
+```jinja2
+{% set extra %}{% if condition %} text{% endif %}{% endset %}
+- item{{extra}}
+```
+
+**HTML in Markdown:** avoid `<br />` — it requires an explicit allowlist entry
+in markdownlint config (MD033). Use `&nbsp;` for indentation in hierarchy lists
+instead:
+
+```jinja2
+{{ '&nbsp;' * depth }}{{type_link(name)}}
+```
 
 ## Python
 

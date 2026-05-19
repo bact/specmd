@@ -14,7 +14,7 @@ It can then generate one or more of the following outputs:
 | `plantuml` | PlantUML diagram source |
 | `rdf` | OWL+SHACL ontology and JSON-LD context |
 | `tex` | TeX source for printable specification |
-| `singlefile` | Single Markdown file (Pandoc → Word) |
+| `singlefile` | Single Markdown file (suitable for conversion to Word, PDF, etc.) |
 | `webpages` | Per-IRI web pages *(not yet implemented)* |
 
 ## Installation
@@ -108,8 +108,7 @@ External tools required for specific formats:
 
 | Format | External prerequisite |
 | - | - |
-| `tex` | [pandoc](https://pandoc.org/) |
-| `singlefile` | [pandoc](https://pandoc.org/) |
+| `tex` | [pandoc](https://pandoc.org/) — used to convert Markdown fragments to LaTeX |
 | All others | None |
 
 ## spec-parser compatibility

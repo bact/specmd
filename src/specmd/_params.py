@@ -104,7 +104,6 @@ class RunParams(SimpleNamespace):
             _check_program("pandoc", "TeX generation")
             _check_module("jinja2", "TeX generation")
         if self.generate_singlefile:
-            _check_program("pandoc", "single-file generation")
             _check_module("jinja2", "single-file generation")
 
     def _parse_args(self, opts: list[str] | None = None) -> None:

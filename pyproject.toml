@@ -33,6 +33,12 @@ classifiers = [
 ]
 dependencies = ["jinja2", "PyYAML", "rdflib", "rfc8785"]
 
+[project.urls]
+Documentation = "https://github.com/bact/specmd#readme"
+Issues = "https://github.com/bact/specmd/issues"
+Repository = "https://github.com/bact/specmd.git"
+Source = "https://github.com/bact/specmd"
+
 [project.scripts]
 specmd = "specmd.__main__:main"
 
