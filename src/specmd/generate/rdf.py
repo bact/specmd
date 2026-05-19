@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 import re
+import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -94,9 +95,18 @@ def gen_rdf(model: Model, outpath: Path, cfg: Any) -> None:  # pylint: disable=u
     filename = rdf_cfg.get("filename", "spdx-model")
     context_filename = rdf_cfg.get("context-filename", "spdx-context")
 
-    for ext in ["hext", "json-ld", "longturtle", "n3", "nt", "pretty-xml", "trig", "ttl", "xml"]:
-        f = outpath / f"{filename}.{ext}"
-        g.serialize(f, format=ext, encoding="utf-8")
+    # rdflib's PrettyXMLSerializer unconditionally warns for every RDF list head
+    # BNode even when no extra assertions exist. Filter that spurious warning.
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message=r"Assertions on .* other than RDF\.first and RDF\.rest are ignored",
+            category=UserWarning,
+            module=r"rdflib\.plugins\.serializers\.rdfxml",
+        )
+        for ext in ["hext", "json-ld", "longturtle", "n3", "nt", "pretty-xml", "trig", "ttl", "xml"]:
+            f = outpath / f"{filename}.{ext}"
+            g.serialize(f, format=ext, encoding="utf-8")
 
     ctx = _jsonld_context(g, model.base_uri)
     fn = outpath / f"{context_filename}.jsonld"

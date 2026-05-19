@@ -264,8 +264,11 @@ def _migrate_lines(lines: list[str]) -> list[str] | None:
                     for field in ("from", "to", "relationshipClass"):
                         if field in rel:
                             val = rel[field]
-                            if isinstance(val, list):
-                                result.append(f"  - {field}: {', '.join(val)}\n")
+                            if isinstance(val, list) and len(val) > 1:
+                                result.append(f"  - {field}:\n")
+                                result.extend(f"    - {v}\n" for v in val)
+                            elif isinstance(val, list):
+                                result.append(f"  - {field}: {val[0]}\n")
                             else:
                                 result.append(f"  - {field}: {val}\n")
                     continue

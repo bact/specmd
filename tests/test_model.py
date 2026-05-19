@@ -4,11 +4,12 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import pytest
 
-from specmd.parse.model import Model
+from specmd.parse.model import Model, _parse_qualified_class
 
 
 class TestModelLoading:
@@ -23,7 +24,15 @@ class TestModelLoading:
         assert len(model.properties) == 4
 
     def test_vocabulary_count(self, model: Model) -> None:
-        assert len(model.vocabularies) == 1
+        assert len(model.vocabularies) == 2
+
+    def test_simple_vocab_is_not_relationship_vocab(self, model: Model) -> None:
+        vocab = model.vocabularies["/Core/SupportType"]
+        assert vocab.is_relationship_vocab is False
+
+    def test_relationship_vocab_detected(self, model: Model) -> None:
+        vocab = model.vocabularies["/Core/RelationshipType"]
+        assert vocab.is_relationship_vocab is True
 
     def test_datatype_count(self, model: Model) -> None:
         assert len(model.datatypes) == 1
@@ -100,8 +109,6 @@ class TestNamespaceOrder:
         assert m.namespace_order() == ["Core"]
 
     def test_config_excludes_unlisted_namespace(self, tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
-        import logging
-
         # Empty namespace-order → Core excluded, warning emitted
         m = self._model_with_config(tmp_path, "namespace-order: []\n")
         with caplog.at_level(logging.WARNING, logger="specmd.parse.model"):
@@ -118,8 +125,6 @@ class TestNamespaceOrder:
         assert m.namespace_order() == ["Core"]
 
     def test_include_unlisted_no_exclusion_warning(self, tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
-        import logging
-
         m = self._model_with_config(
             tmp_path,
             "namespace-order: []\ninclude-unlisted-namespaces: true\n",
@@ -129,8 +134,6 @@ class TestNamespaceOrder:
         assert "excluded" not in caplog.text
 
     def test_config_unknown_name_warns(self, tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
-        import logging
-
         m = self._model_with_config(tmp_path, "namespace-order:\n  - Core\n  - NonExistent\n")
         with caplog.at_level(logging.WARNING, logger="specmd.parse.model"):
             result = m.namespace_order()
@@ -147,3 +150,59 @@ class TestInstantiability:
 
     def test_agent_is_abstract(self, model: Model) -> None:
         assert model.classes["/Core/Agent"].metadata.get("abstract") == "true"
+
+
+class TestParseQualifiedClass:
+    def test_bare_name(self) -> None:
+        assert _parse_qualified_class("Element") == ("Element", {})
+
+    def test_qualified_single_prop_single_value(self) -> None:
+        base, q = _parse_qualified_class("Relationship[relationshipType=invokedBy]")
+        assert base == "Relationship"
+        assert q == {"relationshipType": ["invokedBy"]}
+
+    def test_qualified_single_prop_multi_value(self) -> None:
+        base, q = _parse_qualified_class("Relationship[relationshipType=a,b,c]")
+        assert base == "Relationship"
+        assert q == {"relationshipType": ["a", "b", "c"]}
+
+    def test_qualified_multi_prop_semicolon(self) -> None:
+        base, q = _parse_qualified_class("Relationship[relationshipType=a,b,c;scope=build]")
+        assert base == "Relationship"
+        assert q == {"relationshipType": ["a", "b", "c"], "scope": ["build"]}
+
+    def test_qualified_multi_prop_single_values(self) -> None:
+        base, q = _parse_qualified_class("Foo[a=1;b=2]")
+        assert base == "Foo"
+        assert q == {"a": ["1"], "b": ["2"]}
+
+    def test_strips_whitespace(self) -> None:
+        base, q = _parse_qualified_class("  Agent  ")
+        assert base == "Agent"
+        assert q == {}
+
+    def test_whitespace_inside_qualifier(self) -> None:
+        base, q = _parse_qualified_class("Foo[ a = x , y ; b = z ]")
+        assert base == "Foo"
+        assert q == {"a": ["x", "y"], "b": ["z"]}
+
+
+class TestVocabEntryValidation:
+    def test_known_class_no_warning(self, model: Model, caplog: pytest.LogCaptureFixture) -> None:
+        # Agent exists in the fixture; used as from/to in RelationshipType entries
+        with caplog.at_level(logging.WARNING, logger="specmd.parse.model"):
+            model.validate_vocab_entries()
+        # Only check that Agent itself doesn't trigger a warning
+        assert "unknown class 'Agent'" not in caplog.text
+
+    def test_unknown_class_warns(self, model: Model, caplog: pytest.LogCaptureFixture) -> None:
+        # Vocabulary, Action, Artifact etc. are not in the minimal fixture
+        with caplog.at_level(logging.WARNING, logger="specmd.parse.model"):
+            model.validate_vocab_entries()
+        assert "unknown class" in caplog.text
+
+    def test_unknown_qualifier_prop_warns(self, model: Model, caplog: pytest.LogCaptureFixture) -> None:
+        # 'relationshipType' is not a property in the fixture model
+        with caplog.at_level(logging.WARNING, logger="specmd.parse.model"):
+            model.validate_vocab_entries()
+        assert "unknown property" in caplog.text

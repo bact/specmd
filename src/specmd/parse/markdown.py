@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 import re
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import yaml
@@ -211,11 +212,55 @@ class SingleListSection(Section):
             self.kv[k] = str(v) if v is not None else ""
 
 
-_VOCAB_ENTRY_DEFAULTS: dict[str, object] = {
-    "from": ["Element"],
-    "to": ["Element"],
-    "relationshipClass": "Relationship",
-}
+_DEFAULT_FROM: list[str] = ["Element"]
+_DEFAULT_TO: list[str] = ["Element"]
+_DEFAULT_RELATIONSHIP_CLASS = "Relationship"
+
+
+@dataclass
+class VocabDefaults:
+    """Default ``from``, ``to``, and ``relationshipClass`` for vocabulary entries."""
+
+    default_from: list[str] = field(default_factory=lambda: list(_DEFAULT_FROM))
+    default_to: list[str] = field(default_factory=lambda: list(_DEFAULT_TO))
+    default_relationship_class: str = _DEFAULT_RELATIONSHIP_CLASS
+
+
+def _split_class_list(raw: str) -> list[str]:
+    """Split a comma-separated class list, respecting ``[...]`` constraint blocks.
+
+    Each element may be a bare class name (``Element``) or a constrained form
+    (``Relationship[relationshipType=invokedBy]``).  Commas *inside* brackets
+    are treated as part of the constraint expression, not as list separators.
+
+    Examples::
+
+        "Agent, Tool"                       → ["Agent", "Tool"]
+        "Relationship[relationshipType=invokedBy]"
+                                            → ["Relationship[relationshipType=invokedBy]"]
+        "Foo[a=1, b=2], Bar"               → ["Foo[a=1, b=2]", "Bar"]
+    """
+    result: list[str] = []
+    depth = 0
+    current: list[str] = []
+    for ch in raw:
+        if ch == "[":
+            depth += 1
+            current.append(ch)
+        elif ch == "]":
+            depth -= 1
+            current.append(ch)
+        elif ch == "," and depth == 0:
+            part = "".join(current).strip()
+            if part:
+                result.append(part)
+            current = []
+        else:
+            current.append(ch)
+    part = "".join(current).strip()
+    if part:
+        result.append(part)
+    return result
 
 
 class VocabularySection(Section):
@@ -239,9 +284,12 @@ class VocabularySection(Section):
 
     Every entry is normalised to a dict with at least ``description``, ``from``,
     ``to``, and ``relationshipClass``.  Missing structural fields receive defaults
-    from ``_VOCAB_ENTRY_DEFAULTS`` (``from``/``to`` → ``["Element"]``,
-    ``relationshipClass`` → ``"Relationship"``).  ``from`` and ``to`` are stored as
-    ``list[str]`` split on commas; all other fields are plain strings.
+    from the constructor parameters: *default_from* (``["Element"]`` if omitted),
+    *default_to* (``["Element"]`` if omitted), and *default_relationship_class*
+    (``"Relationship"`` if omitted).
+    ``from`` and ``to`` are stored as ``list[str]`` using :func:`_split_class_list`,
+    which preserves constraint blocks such as ``Relationship[type=invokedBy]``.
+    All other fields are plain strings.
     Optional fields ``sinceVersion``, ``deprecated``, ``deprecatedVersion``, and
     ``isReplacedBy`` are stored verbatim when present.
     """
@@ -251,8 +299,13 @@ class VocabularySection(Section):
         content: str | None,
         filename: str | None = None,
         context: str | None = None,
+        defaults: VocabDefaults | None = None,
     ) -> None:
         self.entries: dict[str, dict[str, object]] = {}
+        _d = defaults or VocabDefaults()
+        self._default_from: list[str] = _d.default_from
+        self._default_to: list[str] = _d.default_to
+        self._default_relationship_class: str = _d.default_relationship_class
         super().__init__(content, filename, context)
 
     def load(self, content: str) -> None:
@@ -296,7 +349,11 @@ class VocabularySection(Section):
                         )
                         continue
                     ((k, v),) = attr.items()
-                    entry[k] = str(v) if v is not None else ""
+                    if k in ("from", "to") and isinstance(v, list):
+                        # YAML list value (block or inline): keep as list of strings.
+                        entry[k] = [str(item).strip() for item in v if str(item).strip()]
+                    else:
+                        entry[k] = str(v) if v is not None else ""
             else:
                 logger.error(
                     self._fmt_err_msg(
@@ -307,14 +364,24 @@ class VocabularySection(Section):
                 continue
             if "description" not in entry:
                 entry["description"] = ""
-            for field in ("from", "to"):
-                raw = entry.get(field)
+            for key, default in (("from", self._default_from), ("to", self._default_to)):
+                raw = entry.get(key)
                 if raw is None:
-                    entry[field] = list(_VOCAB_ENTRY_DEFAULTS[field])  # type: ignore[call-overload]
-                elif isinstance(raw, str):
-                    entry[field] = [s.strip() for s in raw.split(",") if s.strip()]
+                    entry[key] = list(default)
+                elif isinstance(raw, list):
+                    pass  # already a list from YAML list value
+                else:
+                    s = str(raw).strip()
+                    if "," in s:
+                        logger.warning(
+                            self._fmt_err_msg(
+                                f"{key!r} contains commas; use a YAML list for multiple values",
+                                f"e.g. `- {key}:\\n    - ClassName`",
+                            )
+                        )
+                    entry[key] = _split_class_list(s) if s else list(default)
             if "relationshipClass" not in entry:
-                entry["relationshipClass"] = _VOCAB_ENTRY_DEFAULTS["relationshipClass"]
+                entry["relationshipClass"] = self._default_relationship_class
             self.entries[name] = entry
 
 

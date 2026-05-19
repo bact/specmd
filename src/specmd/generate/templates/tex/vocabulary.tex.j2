@@ -1,6 +1,6 @@
 {% extends "entity.tex.j2" %}
 {% block metadata %}
-\begin{tabular}{ | l l | } 
+\begin{tabular}{ | l l | }
 \hline
  \emph{Name:} & {{metadata["name"]}} \\
 \hline
@@ -9,10 +9,22 @@
 %
 {% block extra %}
 \spdxpagepart{Entries}
+{% if is_relationship_vocab %}
+\begin{tabular}{ | l l l p{6cm} l | }
+\hline
+\textbf{Name} & \textbf{From} & \textbf{To} & \textbf{Description} & \textbf{Relationship class} \\
+\hline
+{% for name, val in entries | dictsort %}
+{{tex_escape(name)}} & {{val["from"] | map("string") | map("tex_escape") | join(", ")}} & {{val["to"] | map("string") | map("tex_escape") | join(", ")}} & {{markdown_to_tex(val["description"])}} & {{tex_escape(val["relationshipClass"])}} \\
+{% endfor %}
+\hline
+\end{tabular}
+{% else %}
 \begin{description}
 {% for name, val in entries | dictsort %}
 \item[ {{-tex_escape(name)-}} ]
-    {{-markdown_to_tex(val["description"])-}}{% if val["from"] != ["Element"] or val["to"] != ["Element"] or val["relationshipClass"] != "Relationship" %} (from: {{val["from"] | join(", ")}}, to: {{val["to"] | join(", ")}}, relationshipClass: {{tex_escape(val["relationshipClass"])}}){% endif %}
+    {{-markdown_to_tex(val["description"])-}}
 {% endfor %}
 \end{description}
+{% endif %}
 {% endblock %}
