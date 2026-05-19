@@ -1,3 +1,4 @@
+# SPDX-FileType: SOURCE
 # SPDX-License-Identifier: Apache-2.0
 
 """Generate standalone web pages from the model (stub)."""

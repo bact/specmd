@@ -1,4 +1,6 @@
+# SPDX-FileType: SOURCE
 # SPDX-License-Identifier: Apache-2.0
+
 """Migrate spec Markdown files from spec-parser format to specmd format.
 
 Public API

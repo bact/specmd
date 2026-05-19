@@ -1,4 +1,6 @@
+# SPDX-FileType: SOURCE
 # SPDX-License-Identifier: Apache-2.0
+
 """Output generators: one module per supported format, plus the top-level dispatcher."""
 
 from __future__ import annotations

@@ -1,4 +1,6 @@
+# SPDX-FileType: SOURCE
 # SPDX-License-Identifier: Apache-2.0
+
 """Logging setup: a counting handler that tracks error/warning totals and stores error messages."""
 
 import logging

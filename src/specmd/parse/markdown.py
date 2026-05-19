@@ -1,4 +1,6 @@
+# SPDX-FileType: SOURCE
 # SPDX-License-Identifier: Apache-2.0
+
 """Parse spec Markdown files into typed section objects (SpecFile, ContentSection, SingleListSection, NestedListSection)."""
 
 from __future__ import annotations

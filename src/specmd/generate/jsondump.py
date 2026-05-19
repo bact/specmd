@@ -1,4 +1,6 @@
+# SPDX-FileType: SOURCE
 # SPDX-License-Identifier: Apache-2.0
+
 """Serialise the parsed model to clean JSON using only the stdlib."""
 
 from __future__ import annotations

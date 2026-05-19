@@ -1,4 +1,6 @@
+# SPDX-FileType: SOURCE
 # SPDX-License-Identifier: Apache-2.0
+
 """Backward-compatibility entry point mimicking the original spec-parser CLI.
 
 This file is provided for a smooth transition. It:

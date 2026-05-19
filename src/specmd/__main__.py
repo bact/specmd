@@ -1,4 +1,6 @@
+# SPDX-FileType: SOURCE
 # SPDX-License-Identifier: Apache-2.0
+
 """Entry point for ``python -m specmd`` and the ``specmd`` CLI command."""
 
 import logging
