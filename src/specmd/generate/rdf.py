@@ -1,4 +1,6 @@
+# SPDX-FileType: SOURCE
 # SPDX-License-Identifier: Apache-2.0
+
 """Generate an OWL ontology with SHACL shapes and JSON-LD context from the parsed model."""
 
 from __future__ import annotations

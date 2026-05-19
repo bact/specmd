@@ -1,4 +1,6 @@
+# SPDX-FileType: SOURCE
 # SPDX-License-Identifier: Apache-2.0
+
 """Generate MkDocs site input: per-term pages, navigation YAML, and class hierarchy page."""
 
 from __future__ import annotations

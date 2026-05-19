@@ -1,4 +1,6 @@
+# SPDX-FileType: SOURCE
 # SPDX-License-Identifier: Apache-2.0
+
 """CLI argument parsing and ``RunParams`` configuration object."""
 
 import argparse

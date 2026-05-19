@@ -1,4 +1,6 @@
+# SPDX-FileType: SOURCE
 # SPDX-License-Identifier: Apache-2.0
+
 """Generate PlantUML class diagram input from the model."""
 
 from __future__ import annotations

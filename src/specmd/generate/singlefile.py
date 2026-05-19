@@ -1,4 +1,6 @@
+# SPDX-FileType: SOURCE
 # SPDX-License-Identifier: Apache-2.0
+
 """Serialise the model as a single concatenated Markdown document."""
 
 from __future__ import annotations

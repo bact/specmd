@@ -1,3 +1,4 @@
+# SPDX-FileType: SOURCE
 # SPDX-License-Identifier: Apache-2.0
 
 """specmd -- parse a specification written in Markdown and generate RDF ontology, MkDocs pages, and diagrams."""

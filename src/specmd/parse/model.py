@@ -1,4 +1,6 @@
+# SPDX-FileType: SOURCE
 # SPDX-License-Identifier: Apache-2.0
+
 """In-memory model of the parsed spec: namespaces, classes, properties, vocabularies, datatypes, individuals, and inheritance."""
 
 from __future__ import annotations

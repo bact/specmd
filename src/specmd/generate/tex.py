@@ -1,4 +1,6 @@
+# SPDX-FileType: SOURCE
 # SPDX-License-Identifier: Apache-2.0
+
 """Generate LaTeX input from the model, then optionally compile to PDF via latexmk."""
 
 from __future__ import annotations
