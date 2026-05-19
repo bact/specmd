@@ -1,0 +1,20 @@
+{% extends "page.md.j2" %}
+
+{% block metadata %}
+| | |
+| - | - |
+| **Name** | {{metadata["name"]}} |
+| **Nature** | {{metadata["nature"]}} |
+| **Range** | {{metadata["range"]}} |
+{% endblock %}
+
+{% block extra %}
+{% if used_in %}
+
+#### Referenced
+
+{% for name in used_in | sort %}
+- {{name}}
+{% endfor %}
+{% endif %}
+{% endblock %}

@@ -1,0 +1,48 @@
+# SPDX-FileCopyrightText: 2026-present Arthit Suriyawongkul
+# SPDX-License-Identifier: Apache-2.0
+
+name: Lint and format
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - ".github/workflows/lint.yml"
+      - "pyproject.toml"
+      - "**/*.py"
+  pull_request:
+    branches: [ main ]
+    paths:
+      - ".github/workflows/lint.yml"
+      - "pyproject.toml"
+      - "**/*.py"
+
+jobs:
+  ruff:
+    name: Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install Ruff
+        run: |
+          pip install --upgrade pip
+          pip install . --group lint
+
+      - name: Ruff linter
+        run: |
+          ruff check src/ tests/
+
+      - name: Pylint
+        run: |
+          pylint src/
+
+      - name: Ruff formatter check
+        run: |
+          ruff format --check src/ tests/

@@ -1,0 +1,36 @@
+# {{name}} profile
+
+## Summary
+
+{{summary}}
+
+## Description
+
+{{description}}
+{% if metadata.get("example") %}
+
+## Example
+
+{% set _ex = metadata["example"] %}
+{% if _ex.startswith("http://") or _ex.startswith("https://") %}
+See [example]({{_ex}}).
+{% else %}
+```json
+{{_ex}}
+```
+{% endif %}
+{% endif %}
+
+## Metadata
+
+`{{iri}}`
+
+| | |
+| - | - |
+| **Name** | {{metadata["name"]}} |
+{% if conformance %}
+
+## Profile conformance
+
+{{conformance}}
+{% endif %}

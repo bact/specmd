@@ -1,0 +1,17 @@
+{% extends "page.md.j2" %}
+
+{% block metadata %}
+| | |
+| - | - |
+| **Name** | {{metadata["name"]}} |
+{% endblock %}
+
+{% block extra %}
+
+#### Entries
+
+{% for name, val in entries | dictsort %}
+{% set extra %}{% if val["from"] != ["Element"] or val["to"] != ["Element"] or val["relationshipClass"] != "Relationship" %} (from: {{val["from"] | join(", ")}}, to: {{val["to"] | join(", ")}}, relationshipClass: {{val["relationshipClass"]}}){% endif %}{% if val.get("example") %} *Example: {% if val["example"].startswith("http://") or val["example"].startswith("https://") %}[link]({{val["example"]}}){% else %}`{{val["example"]}}`{% endif %}*{% endif %}{% endset %}
+- **{{name}}**: {{val["description"]}}{{extra}}
+{% endfor %}
+{% endblock %}

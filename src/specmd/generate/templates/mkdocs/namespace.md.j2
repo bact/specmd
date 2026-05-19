@@ -1,0 +1,18 @@
+{% extends "page.md.j2" %}
+
+{% block extratitle %}{% endblock %}
+
+{% block metadata %}
+| | |
+| - | - |
+| **Name** | {{metadata["name"]}} |
+{% endblock %}
+
+{% block extra %}
+{% if conformance %}
+
+## Profile conformance
+
+{{conformance}}
+{% endif %}
+{% endblock %}

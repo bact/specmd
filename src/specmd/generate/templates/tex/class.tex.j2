@@ -1,0 +1,69 @@
+{% extends "entity.tex.j2" %}
+{% block metadata %}
+\par
+\begin{tabular}{ | >{\itshape}l l | } 
+\hline
+ Name: & {{metadata["name"]}} \\
+ Instantiability: & {{"Abstract" if metadata.get("abstract") == "true" else "Concrete"}} \\
+{%if "subClassOf" in metadata %}
+ SubclassOf: & {{metadata["subClassOf"]}} \\
+{% endif %}
+\hline
+\end{tabular}
+%
+{%if inheritance_stack %}
+\spdxpagepart{Class hierarchy}
+\begin{itemize}
+\tightlist
+{% for super in inheritance_stack %}
+\item {{super}}
+{% endfor %}
+\end{itemize}
+{% endif %}
+{% endblock %}
+
+{% block extra %}
+{% if properties %}
+\spdxpagepart{Properties}
+\begin{tabular}{ l l c c } 
+\toprule
+ Property & Type & minCount & maxCount \\
+\midrule
+    {% for name, kv in properties | dictsort %}
+ {{name}} & {{kv["type"]}} & {{kv["minCount"]}} & {{kv["maxCount"]}} \\
+    {% endfor %}
+\bottomrule
+\end{tabular} 
+\par
+{% endif %}
+
+{% if ext_prop_restrs %}
+\spdxpagepart{External properties cardinality updates}
+\begin{tabular}{ l c c  } 
+\toprule
+ Property & minCount & maxCount \\
+\midrule
+    {% for name, kv in ext_prop_restrs | dictsort %}
+ {{name}} & {{not_none(kv.get("minCount"))}} & {{not_none(kv.get("maxCount"))}} \\
+    {% endfor %}
+\bottomrule
+\end{tabular}
+\par
+{% endif %}
+
+{% if all_properties %}
+% \spdxpagepart{All properties}
+\begin{tabular}{ |l l c c| } 
+\multicolumn{4}{c}{\textbf{All properties} (informative)} \\
+\hline
+ Property & Type & minCount & maxCount \\
+\hline
+    {% for name, kv in all_properties | dictsort %}
+ {{name}} & {{kv["type"]}} & {{kv["minCount"]}} & {{kv["maxCount"]}} \\
+    {% endfor %}
+\hline
+\end{tabular} 
+\par
+{% endif %}
+
+{% endblock %}

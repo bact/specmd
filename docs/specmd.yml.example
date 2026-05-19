@@ -1,0 +1,112 @@
+# specmd.yml — example configuration for the SPDX 3.0 model
+#
+# Place this file in the root of your model directory (alongside the
+# namespace folders such as Core/, Software/, etc.).
+# All keys are optional. Omit any section to accept the built-in defaults.
+
+# ---------------------------------------------------------------------------
+# Namespace selection and ordering
+# ---------------------------------------------------------------------------
+
+# Explicit ordered list of namespaces to include in generated output.
+# Generators that produce a single assembled document (singlefile, tex) and
+# the MkDocs navigation file (mkdocs) use this order.
+#
+# Behaviour when namespace-order is set:
+#   - Namespaces listed here that are absent from the model are warned and skipped.
+#   - Namespaces present in the model but absent from this list are excluded
+#     (with a warning) unless include-unlisted-namespaces is true.
+#
+# Behaviour when namespace-order is absent:
+#   - All namespaces in the model are used, in alphabetical order.
+
+namespace-order:
+  - Core
+  - Software
+  - Security
+  - Licensing
+  - SimpleLicensing
+  - ExpandedLicensing
+  - Dataset
+  - AI
+  - Build
+  - Lite
+  - Extension
+  - Hardware
+  - Service
+  - SupplyChain
+  - Operations
+  - FunctionalSafety
+
+# When true, namespaces present in the model but absent from namespace-order
+# are appended alphabetically at the end instead of being excluded.
+# Default: false (absent namespaces are excluded with a warning).
+include-unlisted-namespaces: false
+
+# ---------------------------------------------------------------------------
+# Document license
+# ---------------------------------------------------------------------------
+
+# SPDX license identifier written into the YAML frontmatter of generated
+# Markdown documents (mkdocs pages, single-file output).
+# Resolution order:
+#   1. This key (explicit override)
+#   2. SPDX-License-Identifier from the first namespace source file
+#   3. Empty string (identifier omitted from frontmatter)
+license: Community-Spec-1.0
+
+# ---------------------------------------------------------------------------
+# Ontology metadata  (used by the RDF / OWL generator)
+# ---------------------------------------------------------------------------
+
+ontology:
+  # Bound as the graph prefix for the ontology base URI and emitted as
+  # vann:preferredNamespacePrefix on the ontology node.
+  preferred-namespace-prefix: spdx
+
+  # rdfs:label on the ontology node (human-readable, may include Unicode).
+  label: "System Package Data Exchange™ (SPDX®) Ontology"
+
+  # dcterms:title on the ontology node (plain-text variant of the label).
+  title: "System Package Data Exchange (SPDX) Ontology"
+
+  # dcterms:abstract — short prose description of what the ontology defines.
+  abstract: >-
+    This ontology defines the terms and relationships used in the SPDX
+    specification to describe system packages.
+
+  # dcterms:creator
+  creator: "SPDX Project"
+
+  # dcterms:license — URI of the licence that governs the ontology itself.
+  license: "https://spdx.org/licenses/Community-Spec-1.0.html"
+
+  # dcterms:references — URI of the normative specification.
+  references: "https://spdx.dev/specifications/"
+
+  # omg-ann:copyright
+  copyright: "Copyright (C) SPDX Project"
+
+# ---------------------------------------------------------------------------
+# RDF output file naming
+# ---------------------------------------------------------------------------
+
+rdf:
+  # Base name (without extension) for all serialised RDF files.
+  # Produces: <filename>.ttl, <filename>.json-ld, <filename>.nt, etc.
+  # and:       <filename>.dot  (Graphviz diagram)
+  filename: spdx-model
+
+  # Base name (without .jsonld extension) for the JSON-LD context file.
+  context-filename: spdx-context
+
+# ---------------------------------------------------------------------------
+# PlantUML diagram settings
+# ---------------------------------------------------------------------------
+
+plantuml:
+  # Title placed at the top of the generated @startuml diagram.
+  title: "SPDXv3 model"
+
+  # PlantUML scale directive — controls the output canvas size.
+  scale: "4000*4000"

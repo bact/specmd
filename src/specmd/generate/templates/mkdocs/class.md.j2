@@ -1,0 +1,58 @@
+{% extends "page.md.j2" %}
+
+{% block metadata %}
+| | |
+| - | - |
+| **Name** | {{metadata["name"]}} |
+| **Instantiability** | {{"Abstract" if metadata.get("abstract") == "true" else "Concrete"}} |
+{% if "subClassOf" in metadata %}
+| **SubclassOf** | {{type_link(metadata["subClassOf"])}} |
+{% endif %}
+
+## Class hierarchy
+
+{% set full_inheritance_stack = [fqname] + inheritance_stack %}
+{% for super in full_inheritance_stack | reverse %}
+{{ '&nbsp;' * ((loop.index-1) * 6) }}{{type_link(super)}}
+{% endfor %}
+{% if direct_subclasses %}
+
+### Direct subclasses
+
+{% for subclass in direct_subclasses | sort %}
+- {{type_link(subclass)}}
+{% endfor %}
+{% endif %}
+{% endblock %}
+{% block extra %}
+{% if properties %}
+
+## Properties
+
+| Property | Type | minCount | maxCount |
+| - | - | :-: | :-: |
+    {% for name, kv in properties | dictsort %}
+| {{property_link(name)}} | {{type_link(all_properties[name.rpartition("/")[-1]]["fulltype"])}} | {{kv["minCount"]}} | {{kv["maxCount"]}} |
+    {% endfor %}
+{% endif %}
+{% if ext_prop_restrs %}
+
+## External properties cardinality updates
+
+| Property | minCount | maxCount |
+| - | :-: | :-: |
+    {% for name, kv in ext_prop_restrs | dictsort %}
+| {{ext_property_link(name)}} | {{not_none(kv.get("minCount"))}} | {{not_none(kv.get("maxCount"))}} |
+    {% endfor %}
+{% endif %}
+{% if all_properties %}
+
+## All properties
+
+| Property | Type | minCount | maxCount |
+| - | - | :-: | :-: |
+    {% for name, kv in all_properties | dictsort %}
+| {{property_link(kv["fullname"], showshort=True)}} | {{type_link(kv["fulltype"], showshort=True)}} | {{kv["minCount"]}} | {{kv["maxCount"]}} |
+    {% endfor %}
+{% endif %}
+{% endblock %}

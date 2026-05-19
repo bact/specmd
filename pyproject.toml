@@ -1,0 +1,190 @@
+# SPDX-License-Identifier: Apache-2.0
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "specmd"
+dynamic = ["version"]
+description = "Parse Markdown model definitions into RDF, diagrams, and docs."
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.11"
+dependencies = ["jinja2", "PyYAML", "rdflib", "rfc8785"]
+
+[project.scripts]
+specmd = "specmd.__main__:main"
+
+[dependency-groups]
+lint = ["flake8>=7.3.0", "pylint>=4.0.5", "ruff>=0.15.7"]
+test = ["coverage", "coveralls", "pytest>=9.0.2"]
+typecheck = ["mypy>=1.19.1", "types-PyYAML", "types-Pygments", "types-pexpect"]
+dev = [
+    "build",
+    { include-group = "lint" },
+    { include-group = "test" },
+    { include-group = "typecheck" },
+]
+
+[tool.coverage.paths]
+source = ["src/specmd", "**/site-packages/specmd"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "def __repr__",
+    "raise NotImplementedError",
+]
+show_missing = true
+
+[tool.coverage.run]
+branch = true
+source = ["specmd"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/specmd"]
+
+[tool.hatch.version]
+path = "src/specmd/__init__.py"
+
+# ---------------------------------------------------------------------------
+# pytest
+# ---------------------------------------------------------------------------
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning:rdflib"]
+
+# ---------------------------------------------------------------------------
+# ruff
+# ---------------------------------------------------------------------------
+
+[tool.ruff]
+indent-width = 4
+line-length = 145
+output-format = "full"
+preview = false
+required-version = ">=0.9"
+show-fixes = true
+
+[tool.ruff.format]
+docstring-code-format = false
+indent-style = "space"
+line-ending = "native"
+preview = false
+quote-style = "double"
+skip-magic-trailing-comma = false
+
+[tool.ruff.lint]
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+fixable = ["ALL"]
+ignore = [
+    "AIR",
+    "ANN",
+    "D",
+    "NPY",
+    "PD",
+    "C408",
+    "C901",
+    "COM812",
+    "EM102",
+    "G004",
+    "ISC001",
+    "RET505",
+    "S101",
+]
+logger-objects = ["logger", "root_logger"]
+preview = false
+select = ["ALL"]
+unfixable = []
+
+[tool.ruff.lint.per-file-ignores]
+"main.py" = ["T201"] # compat notice to stderr is intentional
+"src/specmd/__init__.py" = ["F401"] # re-exported symbol
+"src/specmd/__main__.py" = [
+    "T201", # print to stderr for error summary is intentional
+]
+"src/specmd/commands/migrate.py" = [
+    "PLR0912", # _migrate_lines has many branches by necessity
+    "PLR0915", # _migrate_lines has many statements by necessity
+    "TC003",   # Path used at runtime
+]
+"src/specmd/commands/export.py" = [
+    "PLR0912", # _revert_lines has many branches by necessity
+    "PLR0915", # _revert_lines has many statements by necessity
+    "TC003",   # Path used at runtime
+    "TRY003",  # ValueError message is intentionally inline
+]
+"src/specmd/_params.py" = [
+    "PLR0915", # _parse_args has many statements by necessity
+    "TRY003",  # ArgumentTypeError messages are intentionally inline
+    "TC003",   # Path used at runtime inside _parse_args
+]
+"src/specmd/generate/__init__.py" = [
+    "PLC0415",
+] # late imports for optional generators
+"src/specmd/generate/jsondump.py" = [
+    "ARG001",
+] # cfg unused, kept for uniform signature
+"src/specmd/generate/mkdocs.py" = ["TC003"] # Path used at runtime
+"src/specmd/parse/model.py" = ["TC003"] # Path used at runtime
+"src/specmd/generate/plantuml.py" = ["E741"] # (l, r) pairs are intentional
+"src/specmd/generate/rdf.py" = [
+    "ARG001",  # cfg unused, kept for uniform signature
+    "F401",    # SKOS imported for completeness / rdflib namespace binding
+    "FBT003",  # Literal(True) is idiomatic rdflib for owl:deprecated
+    "N806",    # OMG_ANN uppercase is a namespace constant
+    "PLR0915", # gen_rdf_ontology has many statements
+    "PLR2004", # split("/", 1) always produces exactly 2 parts
+    "TC003",   # Path used at runtime
+]
+"src/specmd/generate/tex.py" = [
+    "ERA001", # commented section placeholder is intentional
+    "RET504", # chained replacements read more clearly with assignment
+    "S607",   # process without full path
+]
+"tests/**" = [
+    "ANN",     # no annotations required in tests
+    "PLC0415", # late imports inside fixtures are intentional
+    "PLR2004", # magic values in assertions are acceptable
+    "S101",    # assert is expected in tests
+    "TC001",   # app imports used at runtime in test bodies
+    "TC002",   # third-party imports used at runtime in test bodies
+    "TC003",   # Path used at runtime in test helpers
+]
+
+[tool.ruff.lint.isort]
+case-sensitive = true
+force-sort-within-sections = false
+from-first = false
+lines-between-types = 0
+split-on-trailing-comma = false
+
+[tool.ruff.lint.pylint]
+max-branches = 35
+max-statements = 65
+
+# ---------------------------------------------------------------------------
+# pylint
+# ---------------------------------------------------------------------------
+
+[tool.pylint.main]
+disable = [
+    "C",     # conventions (docstrings, naming) -- ruff handles formatting
+    "R0401", # cyclic imports -- false positives with TYPE_CHECKING
+    "R0801", # duplicate code -- shared patterns in template-heavy modules
+    "R0902", # too-many-instance-attributes -- data container classes legitimately need many
+    "R0903", # too-few-public-methods -- data container / parsing helper classes
+    "W0201", # attribute-defined-outside-init -- SimpleNamespace subclass pattern in RunParams
+    "W0613", # unused-argument -- ruff ARG001 handles this; noqa already in place
+]
+
+[tool.pylint.design]
+max-attributes = 15
+max-locals = 35
+max-branches = 40
+max-statements = 110
+min-public-methods = 0
+max-nested-blocks = 8
