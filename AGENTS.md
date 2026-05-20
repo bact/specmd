@@ -2,276 +2,130 @@
 
 ## Project context
 
-- Take input in Markdown files in structured directory locations and produce
-  RDF model, specification document (Markdown), diagrams, etc.
+- Reads Markdown model files from structured directories; generates RDF/OWL/SHACL,
+  MkDocs Markdown, PlantUML diagrams, TeX, and single-file Markdown.
 - Test fixtures: `tests/fixtures/README.md`
 - Private alpha, one developer. No backward compat needed yet.
 
+## specmd.yml configuration
+
+Top-level scalar keys: `license` (SPDX ID), `base-uri`, `namespace-order`,
+`include-unlisted-namespaces`.
+
+Sub-blocks: `vocabulary`, `ontology`, `rdf`, `plantuml`.
+
+Key points:
+- Vocab/relationship defaults (`default-from`, `default-to`,
+  `default-relationship-class`) live under `vocabulary:`, not at the top level.
+- `ontology.license-uri` — URI of the ontology licence.
+  Distinct from top-level `license`, which is an SPDX identifier string.
+
+Internal variable convention:
+- `cfg_*` prefix — scalar config value (`str | None`).
+- `*_cfg` suffix — config sub-block (`dict`).
+
+Canonical reference: `docs/specmd.yml.example`.
+
 ## CLI output
 
-- Unix philosophy. Consistent, predictable, parseable.
+- Unix philosophy: consistent, predictable, parseable.
 - Errors: `ERROR: <short description>` to stderr.
-- Must work with `awk`, `wc`, `xargs`, similar Unix tools.
 
 ## Markdown output
 
-- Generated Markdown output must pass markdownlint-cli2.
-- Primarily intended for MkDocs consumption (MkDocs uses Python-Markdown).
-- The `singlefile` format outputs a single Markdown file suitable for downstream
-  conversion (e.g. via Pandoc to Word or PDF); specmd itself does not invoke Pandoc for it.
-- The `tex` format does invoke Pandoc internally to convert Markdown fragments to LaTeX.
-- Generated file headers: YAML front matter (not HTML comments). Omit optional
-  fields (e.g. `SPDX-License-Identifier`) when value is empty or blank.
-- Do not hardcode license or metadata values in templates; read from model
-  (e.g. `Model.spdx_license`).
-- markdownlint config bundled at `src/specmd/generate/markdownlint-cli2.yaml`;
-  copied to each output directory by `_write_markdownlint_config()` so consumers
-  can run `markdownlint-cli2 "**/*.md"` without extra config.
-  - File must be named `.markdownlint-cli2.yaml` (dot-prefixed, full format)
-    to be auto-detected and to support the `ignores` key.
-    `markdownlint.yaml` (no dot) is not auto-detected.
+- Generated Markdown must pass markdownlint-cli2.
+- Targets MkDocs (Python-Markdown). Avoid GitHub-specific extensions.
+- `singlefile` outputs Markdown for downstream Pandoc conversion; specmd itself
+  does not invoke Pandoc for it. `tex` does invoke Pandoc internally.
+- Generated file headers: YAML front matter. Omit optional fields when empty.
+- Do not hardcode license or metadata in templates; read from model
+  (`Model.spdx_license`).
+- markdownlint config at `src/specmd/generate/markdownlint-cli2.yaml`;
+  written as `.markdownlint-cli2.yaml` (dot-prefixed) to each output directory.
 
 ## Jinja2 templates
 
-Templates live in `src/specmd/generate/templates/{format}/`.
-All environments use `trim_blocks=True, lstrip_blocks=True`.
+Templates: `src/specmd/generate/templates/{format}/`.
+All environments: `trim_blocks=True, lstrip_blocks=True`.
 
-### Whitespace gotchas
+`trim_blocks` eats only the `\n` immediately after `%}`. Put blank separators
+**inside** conditional blocks, not outside, to avoid unconditional blank lines.
 
-`trim_blocks` eats only the `\n` immediately after `%}`. Blank lines
-before or after block tags are preserved in output, producing double-blank
-lines if not handled carefully.
-
-**Rule:** Move the blank separator INSIDE the conditional block, at the start
-(before the heading or content), not outside it.
-
-```jinja2
-{# Wrong -- blank line always emitted, even when block renders nothing #}
-
-{% if items %}
-## Items
-{% endif %}
-
-{# Correct -- blank only when block renders #}
-{% if items %}
-
-## Items
-{% endif %}
-```
-
-**List items:** `{% endif %}` at end-of-line consumes the trailing `\n` via
-`trim_blocks`, collapsing all list items onto one line. Use the capture pattern:
+List items: `{% endif %}` at end-of-line collapses items. Use capture pattern:
 
 ```jinja2
 {% set extra %}{% if condition %} text{% endif %}{% endset %}
 - item{{extra}}
 ```
 
-**HTML in Markdown:** avoid `<br />` -- it requires an explicit allowlist entry
-in markdownlint config (MD033). Use `&nbsp;` for indentation in hierarchy lists
-instead:
-
-```jinja2
-{{ '&nbsp;' * depth }}{{type_link(name)}}
-```
+Avoid `<br />` (requires MD033 allowlist). Use `&nbsp;` for indentation.
 
 ## Vocabulary qualifier syntax
 
-`from`/`to` items in relationship-type vocab entries may carry a qualifier block:
+`from`/`to` entries may carry qualifiers:
 
 ```
 ClassName[propName=value]
-ClassName[propName=v1,v2,v3]
 ClassName[propName=v1,v2;otherProp=v3]
 ```
 
-Rules:
-- `;` separates distinct properties.
-- `,` separates multiple allowed values for one property.
-- Whitespace around delimiters is stripped.
-- Parsed by `_parse_qualified_class` → `(base: str, qualifiers: dict[str, list[str]])`.
-- Validation warns if base class or qualifier property names are not in the model.
+`;` separates properties; `,` separates values. Parsed by
+`_parse_qualified_class` → `(base: str, qualifiers: dict[str, list[str]])`.
 
 ## Python
 
 - Min version: Python 3.11.
-- Idiomatic Python. Prefer built-ins (`list`, `dict`, `set`, `tuple`) unless `collections`/`collections.abc` clearly better.
-- Full type annotations on all functions, methods, classes, variables. Minimize `Any`. Use `if TYPE_CHECKING:` for heavy type-only imports.
-- Verify types with mypy (strict=true). Use pyright/pytype for second opinions. Recheck `# noqa:` and `# type: ignore`. Reset mypy cache on unexpected errors.
-- Type stubs: no official stubs -> check <https://github.com/python/typeshed> for stubs; unavailable -> derive from source on GitHub/GitLab.
-- Fully qualified names in docstrings for non-stdlib types (e.g., `numpy.ndarray`, not `ndarray`).
-- No `assert` in production -- tests only.
-- No mutable default arguments.
-- No wildcard imports (`from module import *`).
-- No `pickle` (CWE-502).
-- No `eval()` unless absolutely necessary and demonstrably safe.
-- No hardcoded secrets/credentials/tokens.
-- Defensive coding: check `None`/empty, handle exceptions for all external inputs.
-- `time.monotonic()` for durations, not `time.time()`.
-- All config in `pyproject.toml` where possible.
-- `requires-python` must match actual min version.
-- Make packages zip-safe when possible.
-- Packaging metadata follows Core metadata spec: <https://packaging.python.org/en/latest/specifications/core-metadata/>
+- Full type annotations. Minimize `Any`. `if TYPE_CHECKING:` for heavy imports.
+- Verify with mypy (`strict=true`).
+- No `assert` in production code.
 
-### Import order
+## Linting
 
-Groups: stdlib -> third-party -> local, alphabetically within each. Don't reorder imports with comments explaining required order (circular import/init constraint).
+Run before committing: `ruff check --fix`, `mypy`, `pylint`, `ruff format`.
 
-### Type completeness
-
-- All visible class vars, instance vars, methods annotated.
-- All function/method params and return types annotated.
-- Generic base classes have type args specified.
-- Omit annotations only for:
-  - Simple literal constants (e.g., `MAX = 50`, `RED = '#F00'`), preferably `Final`.
-  - Enum member values inside `Enum`.
-  - Module-level type aliases.
-  - `self` and `cls` params.
-  - `__init__` return type.
-  - `__all__`, `__author__`, `__version__`, similar dunder module attrs.
-
-## Linting and formatting
-
-Run and fix all errors before committing:
-
-```shell
-ruff check --fix
-mypy
-pylint
-flake8
-ruff format
-```
-
-- Return statements ≤ 6; refactor if exceeded.
-- Arguments ≤ 5; refactor if exceeded.
-- Local variables ≤ 15; refactor if exceeded.
-- Nested blocks ≤ 5; refactor if exceeded.
-- McCabe complexity ≤ 10; refactor if exceeded.
-- Cognitive complexity ≤ 15; refactor if exceeded.
-- Remove unused imports and trailing whitespace.
-- Max line length = 88; Try to be within 80.
-- Stick with ASCII characters in source code;
-  Only use non-ASCII when native human language scripts provides clearer message;
-  or it provides more readable diagram/box drawing.
-- Avoid ambiguous variable name (E741)
+Limits: return statements ≤ 6, arguments ≤ 5, local variables ≤ 15,
+nested blocks ≤ 5, McCabe complexity ≤ 10.
+Line length: max 88, target 80.
 
 ## File headers
 
-All source files must have SPDX tags in this order (alphabetical):
+All source files — SPDX tags, alphabetical order:
 
 ```text
 SPDX-FileCopyrightText: <year> <name>
-SPDX-FileType: SOURCE                # or DOCUMENTATION
-SPDX-License-Identifier: Apache-2.0  # or CC0-1.0 for docs
+SPDX-FileType: SOURCE          # or DOCUMENTATION
+SPDX-License-Identifier: Apache-2.0  # CC0-1.0 for docs
 ```
-
-Sort SPDX metadata keys alphabetically.
 
 ## Testing
 
-- Add tests for new behavior -- cover success, failure, edge cases.
-- Use pytest patterns, not `unittest.TestCase`.
-- `spec`/`autospec` when mocking.
-- `time_machine` for time-dependent tests.
-- `@pytest.mark.parametrize` for multiple similar inputs.
+- pytest patterns. `@pytest.mark.parametrize` for multiple inputs.
+- Optional-dependency tests use `pytest.importorskip` at **module level** so
+  they are silently skipped; never gate with `try/except ImportError` inside a
+  test function.
+- `spec_parser` is not pip-installable; expose via
+  `PYTHONPATH=/path/to/spec-parser pytest tests/test_shacl2code.py`.
+  See README for full invocation.
 
-## Git and pull requests
+## Naming and IRIs
 
-- Commit messages: user impact, not implementation details.
-- Follow: <https://chris.beams.io/posts/git-commit/>
-- Every PR must address: **What changed?** / **Why?** / **Breaking changes?**
-- Update `CHANGELOG.md` for significant changes per Keep a Changelog (<https://keepachangelog.com/>) and Semantic Versioning (<https://semver.org/>). Mark breaking changes clearly with migration instructions.
-
-## Project metadata consistency
-
-Keep in sync: `pyproject.toml`, `codemeta.json`, `CITATION.cff`, other metadata files.
-
-Consistent fields: project name, version, author/contributor names, license, description, repository URL, keywords/tags (same order).
-
-## Dependencies
-
-- Sort in `pyproject.toml` and `requirements.txt`.
-- Use most current compatible version.
-- Verify package names -- guard against typosquatting/slopsquatting.
-- Remove unused imports and dependencies.
-- Warn about abandoned packages; suggest maintained replacements.
-
-## Security
-
-- No deprecated/obsolete/insecure libraries/APIs.
-- Validate/sanitize all user inputs (SQL injection, XSS, buffer overflows, path traversal CWE-22).
-- No hardcoded secrets. Use env vars or secret managers.
-- Strong, well-established crypto algorithms and key sizes.
-- Regularly update dependencies to latest secure versions.
-
-## Shell scripts
-
-- Account for GNU/BSD/macOS/Unix tool differences.
-- Defensive variable expansion; quote paths and variables.
-- Mind single-quote vs double-quote semantics.
-
-## Naming
-
-- ASCII letters, digits, hyphens (`-`), underscores (`_`) only.
-- Standard naming conventions for the language/framework.
-- Noun number: singular for single-entity classes, plural only for collections/utility modules/aggregates.
-- Ontology/vocab: consult W3C, Schema.org; also FIBO <https://github.com/edmcouncil/fibo/blob/master/ONTOLOGY_GUIDE.md> and OBO Foundry <https://obofoundry.org/principles/fp-012-naming-conventions.html>
-- URLs/IRIs: lowercase + hyphens; W3C Cool URIs: <https://www.w3.org/TR/cooluris/>
-- Consult SEMIC Style Guide: <https://semiceu.github.io/style-guide/1.0.0/index.html>
-
-## JSON
-
-- Decimal values (e.g., `xs:decimal`) in quotes to preserve precision.
-- Valid, well-formatted JSON.
-- SPDX 3 JSON: follow canonical serialization <https://spdx.github.io/spdx-spec/v3.0.1/serializations/#canonical-serialization>
-- Follow RFC 8785 JCS <https://www.rfc-editor.org/rfc/rfc8785>
-- JSON-LD: follow RDF canonicalization <https://www.w3.org/TR/rdf-canon/>
-
-## Markdown
-
-- Metadata as YAML front matter between triple-dashed lines (Hugo/Jekyll style).
-- Standard Markdown; avoid GitHub-specific extensions.
-- `sentence case` for headings/titles.
-- Max line length = 80; Except diagram, table, and URLs.
-- Run Markdownlint.
-
-## HTML and CSS
-
-- Valid, well-formatted HTML, no trailing whitespace.
-- W3C accessibility recommendations.
-- Concise element IDs/names; group related names.
-- No unused CSS styles.
+- Ontology terms: consult W3C, Schema.org, SEMIC Style Guide
+  (<https://semiceu.github.io/style-guide/1.0.0/index.html>).
+- IRIs: lowercase + hyphens. W3C Cool URIs: <https://www.w3.org/TR/cooluris/>.
 
 ## Writing style
 
-- British English for docs, comments, text. American English for code only.
-- Active voice; concise sentences; no jargon/idioms.
-- Short comments -- don't restate the obvious.
-- Consistent terminology throughout.
-- Define acronyms on first use.
-- Parallel structure in lists.
-- IETF verbal forms (RFC 2119/8174) for internet/web/semantic web projects; ISO verbal forms for SPDX docs.
-- Dates: ISO 8601. Numbers/units: SI. Timezone: UTC+0. Currency: Euros (€) primary, USD in parentheses.
-- Citations: Chicago style unless specified.
+- British English for docs and comments; American English in code only.
+- IETF verbal forms (RFC 2119/8174) for RDF/web docs; ISO verbal forms for SPDX spec docs.
 
-## Diagrams (ASCII/text)
+## Project metadata
 
-Count characters, align carefully. Misaligned ASCII = bug.
-
-## Versions
-
-Verify version exists and is compatible before suggesting. Prefer Semantic Versioning.
+Keep in sync: `pyproject.toml`, `codemeta.json`, `CITATION.cff`.
 
 ## Boundaries
 
-**Ask before doing:**
+**Ask before doing:** large cross-package refactors, new broad-impact
+dependencies, destructive data or migration changes.
 
-- Large cross-package refactors.
-- New dependencies with broad impact.
-- Destructive data or migration changes.
-
-**Never:**
-
-- Commit secrets, credentials, or tokens.
-- Edit generated files by hand when generation workflow exists.
-- Use destructive git operations unless explicitly requested.
+**Never:** commit secrets; edit generated files by hand when a generation
+workflow exists; use destructive git operations unless explicitly requested.
