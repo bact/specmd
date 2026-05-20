@@ -1,0 +1,27 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: "SpecMD"
+message: >-
+  If you use this software, please cite it using the metadata from this file.
+type: software
+authors:
+  - given-names: Arthit
+    family-names: Suriyawongkul
+    email: suriyawa@tcd.ie
+    affiliation: "Trinity College Dublin"
+    orcid: "https://orcid.org/0000-0002-9698-1899"
+repository-code: "https://github.com/bact/specmd.git"
+url: "https://pypi.org/project/specmd/"
+abstract: >-
+  Convert Markdown model definitions to RDF ontologies and specification
+  documents.
+keywords:
+  - markdown
+  - specification
+  - ontology
+  - rdf
+license: Apache-2.0
+version: 0.2.0
+date-released: "2026-05-20"

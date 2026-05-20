@@ -180,7 +180,7 @@ class Model:
         self.types = {**self.classes, **self.vocabularies, **self.datatypes}
         logger.info("Total %d types", len(self.types))
 
-        self.base_uri = self._derive_base_uri()
+        self.base_uri = self._resolve_base_uri()
         self.validate_vocab_entries()
 
         for c in self.classes.values():
@@ -287,8 +287,29 @@ class Model:
                     if base not in short_class_names and base not in self.classes:
                         logger.warning("%s: relationshipClass: unknown class %r", loc, base)
 
+    def _resolve_base_uri(self) -> str:
+        """Return the ontology base URI.
+
+        Resolution order:
+        1. ``base-uri`` key in ``specmd.yml`` -- explicit, portable, recommended.
+        2. Heuristic from the Core namespace IRI (SPDX 3 backward compatibility).
+        3. Longest common prefix of all namespace IRIs, with a warning.
+        """
+        cfg_base: str | None = self.config.get("base-uri")
+        if cfg_base:
+            uri = cfg_base.rstrip("/") + "/"
+            logger.debug("Base URI from config: %s", uri)
+            return uri
+        return self._derive_base_uri()
+
     def _derive_base_uri(self) -> str:
-        """Derive the ontology base URI from the Core namespace IRI, if present."""
+        """Heuristic: derive base URI from the Core namespace IRI (SPDX 3 convention).
+
+        Strips the trailing ``Core`` segment from the namespace ``id`` metadata field.
+        Falls back to the longest common prefix of all namespace IRIs when no
+        ``Core`` namespace is present, emitting a warning so the user knows they
+        should set ``base-uri`` in ``specmd.yml`` explicitly.
+        """
         for ns in self.namespaces:
             iri = ns.metadata.get("id", "")
             if iri.endswith("/Core/"):
@@ -296,7 +317,7 @@ class Model:
             if iri.endswith("/Core"):
                 prefix = iri[: -len("Core")]
                 return prefix if prefix.endswith("/") else prefix + "/"
-        # Fall back: use the longest common prefix of all namespace IRIs.
+        # Fall back: longest common prefix of all namespace IRIs.
         iris = [ns.metadata.get("id", "") for ns in self.namespaces if ns.metadata.get("id")]
         if not iris:
             return ""
@@ -304,7 +325,11 @@ class Model:
         for iri in iris[1:]:
             while not iri.startswith(common):
                 common = common[: common.rfind("/", 0, -1) + 1]
-        logger.warning("No Core namespace found; derived base URI: %s", common)
+        logger.warning(
+            "No 'Core' namespace found and no 'base-uri' set in specmd.yml; "
+            "derived base URI: %s -- set 'base-uri' explicitly for non-SPDX models.",
+            common,
+        )
         return common
 
     def namespace_order(self) -> list[str]:

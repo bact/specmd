@@ -4,16 +4,16 @@ SPDX-FileCopyrightText: 2026 Arthit Suriyawongkul
 SPDX-License-Identifier: Community-Spec-1.0
 ---
 
-# Markdown for SPDX 3 model specification
+# Markdown for model specification
 
-The SPDX 3 model is written in a constrained subset of Markdown, with
+SpecMD Markdown is a constrained subset of Markdown, with
 predefined headings and a YAML frontmatter block.
 
 This document provides guidelines for writing model files in the specific
-syntax used by specmd.
+syntax used by SpecMD.
 
 Following these guidelines ensures consistency and avoids rendering issues when
-using specmd and MkDocs to generate model ontologies and model textual
+using SpecMD and MkDocs to generate model ontologies and model textual
 specifications.
 
 ## Table of contents
@@ -30,6 +30,7 @@ specifications.
   - [Individuals](#individuals)
   - [Properties](#properties)
   - [Vocabularies](#vocabularies)
+- [Model configuration (specmd.yml)](#model-configuration-specmdyml)
 - [Verbal forms for expressions of provisions](#verbal-forms-for-expressions-of-provisions)
 - [Writing style](#writing-style)
 - [Translation](#translation)
@@ -44,7 +45,7 @@ is defined in a distinct file.
 Specific headings and formatting are used to provide information for the
 generation of a machine-readable specification, in
 [Resource Description Framework (RDF)](https://en.wikipedia.org/wiki/Resource_Description_Framework)
-data model, by [specmd].
+data model, by SpecMD.
 
 For instance, a summary listed under the "Summary" heading will be represented
 as a `rdfs:comment` in the RDF file. Likewise, a value specified for the
@@ -58,15 +59,17 @@ reference and will not be incorporated into the RDF file.
 ## Directory organisation
 
 Apart from the content in each individual file, the file itself has to be
-placed in a specific location, as specmd implies some model semantic
+placed in a specific location, as SpecMD implies some model semantic
 from the location of the file:
 
 - Each element (class, datatype, individual, property, and vocabulary)
   is defined in a distinct file.
 - Model file names are case-sensitive and shall be identical to the element they
   represent.
-- All model files shall be located within the `model/` directory.
-- Profiles should be organised into subdirectories (e.g., `Core/`, `Dataset/`).
+- All model files are placed under a single root directory, which is passed
+  directly to `specmd`. The name of that directory is not constrained by the
+  tool; `model/` is a common convention.
+- Namespaces should be organised into subdirectories (e.g., `Core/`, `Physics/`).
 - Elements should be categorised by their type in subdirectories (e.g.,
   `Classes/`, `Datatypes/`, `Individuals/`, `Properties/`, `Vocabularies/`).
 
@@ -74,9 +77,9 @@ File and directory organisation:
 
 ```text
 .
-├── model
+├── model                  ← root directory passed to specmd
 :   :
-│   ├── Core
+│   ├── Core               ← namespace
 │   │   ├── Classes
 :   :   :   :
 │   │   │   └── Tool.md
@@ -92,9 +95,12 @@ File and directory organisation:
 │   │   └── Vocabularies
 :   :       :
 │   │       └── SupportType.md
-│   ├── Dataset
+│   ├── Physics            ← another namespace
 :   :
 ```
+
+> **SPDX 3 model:** The root directory is `model/`. Namespaces correspond to
+> SPDX profiles: `Core/`, `Dataset/`, `Software/`, etc.
 
 ## Naming convention
 
@@ -111,14 +117,16 @@ File and directory organisation:
 Each model file shall adhere to a strict content structure:
 
 - All files shall be encoded in UTF-8.
-- Each file shall start with a YAML frontmatter block containing the SPDX
+- Each file shall start with a YAML frontmatter block containing the
   license identifier:
 
   ```markdown
   ---
-  SPDX-License-Identifier: Community-Spec-1.0
+  SPDX-License-Identifier: <license-id>
   ---
   ```
+
+  > **SPDX 3 model:** Use `SPDX-License-Identifier: Community-Spec-1.0`.
 
 - The content immediately after the frontmatter shall begin with an H1 heading
   containing the element's name.
@@ -141,36 +149,34 @@ each model file shall adhere to specific formatting guidelines:
 
 ### Model file example
 
-This example shows a `SimpleLicensingText` class.
-Its name and location in the repository is
-`model/SimpleLicensing/Classes/SimpleLicensingText.md`.
+This example shows a `Tool` class with one property.
+Its name and location in the repository would be
+`model/Core/Classes/Tool.md`.
 
 ```markdown
 ---
-SPDX-License-Identifier: Community-Spec-1.0
+SPDX-License-Identifier: Apache-2.0
 ---
 
-# SimpleLicensingText
+# Tool
 
 ## Summary
 
-A license or addition that is not listed on the SPDX License List.
+A software tool.
 
 ## Description
 
-A SimpleLicensingText represents a License or Addition that is not listed on
-the [SPDX License List](https://spdx.org/licenses),
-and is therefore defined by an SPDX data creator.
+A Tool is a piece of software used to produce or analyse an artefact.
 
 ## Metadata
 
-- name: SimpleLicensingText
-- subClassOf: /Core/Element
+- name: Tool
+- subClassOf: /Core/Agent
 
 ## Properties
 
-- licenseText:
-  - minCount: 1
+- toolVersion:
+  - minCount: 0
   - maxCount: 1
 ```
 
@@ -178,17 +184,22 @@ will give this RDF graph
 (in [Turtle syntax](https://en.wikipedia.org/wiki/Turtle_(syntax))):
 
 ```ttl
-<https://spdx.org/rdf/3.1/terms/SimpleLicensing/SimpleLicensingText> a owl:Class,
+<https://example.org/rdf/terms/Core/Tool> a owl:Class,
         sh:NodeShape ;
-    rdfs:comment "A license or addition that is not listed on the SPDX License List."@en ;
-    rdfs:subClassOf <https://spdx.org/rdf/3.1/terms/Core/Element> ;
+    rdfs:comment "A software tool."@en ;
+    rdfs:subClassOf <https://example.org/rdf/terms/Core/Agent> ;
     sh:nodeKind sh:IRI ;
-    sh:property [ sh:datatype xsd:string ;
-            sh:maxCount 1 ;
-            sh:minCount 1 ;
-            sh:nodeKind sh:Literal ;
-            sh:path <https://spdx.org/rdf/3.1/terms/SimpleLicensing/licenseText> ] .
+    sh:property [ sh:maxCount 1 ;
+            sh:minCount 0 ;
+            sh:path <https://example.org/rdf/terms/Core/toolVersion> ] .
 ```
+
+> **SPDX 3 model:** A real example is `SimpleLicensingText` in
+> [`model/SimpleLicensing/Classes/SimpleLicensingText.md`][simple-license],
+> where the IRI base is `https://spdx.org/rdf/3/terms/` and
+> the license identifier is `Community-Spec-1.0`.
+
+[simple-license]: https://github.com/spdx/spdx-3-model/blob/develop/model/SimpleLicensing/Classes/SimpleLicensingText.md
 
 ## Syntax
 
@@ -213,9 +224,9 @@ Example:
 - name: startTime
 - nature: DataProperty
 - range: DateTime
-- sinceVersion: 3.0
+- sinceVersion: 2.0
 - deprecated: true
-- deprecatedVersion: 3.1
+- deprecatedVersion: 2.1
 - isReplacedBy: /Core/creationInfo
 ```
 
@@ -258,10 +269,10 @@ a property may appear in a class (cardinality):
 > **Note:** The `type:` line that appeared in the old format under each
 > property in the Properties section is no longer used. The type is derived
 > automatically from the property definition's `range` field.
-
-See details in the [Conformance section][conformance] of the specification.
-
-[conformance]: https://spdx.github.io/spdx-spec/v3.0.1/conformance/
+>
+> **SPDX 3 model:** See the
+> [Conformance section](https://spdx.github.io/spdx-spec/v3.0.1/conformance/)
+> of the SPDX 3 specification for cardinality requirements on each class.
 
 #### Class example
 
@@ -284,7 +295,7 @@ A class example.
 
 - name: Bot
 - subClassOf: Agent
-- sinceVersion: 3.1
+- sinceVersion: 2.1
 
 ## Properties
 
@@ -454,7 +465,8 @@ Allowed headings:
 - Description
 - Metadata
   - `name`: \<vocabulary_name\>
-  - `sinceVersion`, `deprecated`, `deprecatedVersion`, `isReplacedBy` *(Optional)*
+  - `sinceVersion`, `deprecated`, `deprecatedVersion`, `isReplacedBy`,
+    `example` *(Optional)*
 - Entries *(see formats below)*
 
 #### Simple entry format
@@ -488,9 +500,9 @@ a structured format may be used:
     - TargetClass
     - AnotherTargetClass
   - relationshipClass: ConstraintRelationship
-  - sinceVersion: 3.0
+  - sinceVersion: 2.0
   - deprecated: true
-  - deprecatedVersion: 3.1
+  - deprecatedVersion: 2.1
   - isReplacedBy: /Core/replacementEntry
 ```
 
@@ -508,8 +520,23 @@ Structured entry fields:
 | `isReplacedBy` | string | -- | Recommended replacement. |
 | `example` | URI or inline string | -- | Usage example. |
 
-The defaults for `from`, `to`, and `relationshipClass` may be overridden in
-`specmd.yml` via `default-from`, `default-to`, and `default-relationship-class`.
+The defaults for `from`, `to`, and `relationshipClass` apply across all
+relationship-type vocabularies in the model. They may be overridden in
+`specmd.yml` (at the model root):
+
+| `specmd.yml` key | Default | Description |
+| - | - | - |
+| `default-from` | `Element` | Default source class when `from` is omitted. |
+| `default-to` | `Element` | Default target class when `to` is omitted. |
+| `default-relationship-class` | `Relationship` | Default OWL class when `relationshipClass` is omitted. |
+
+Example `specmd.yml` fragment:
+
+```yaml
+default-from: Element
+default-to: Element
+default-relationship-class: Relationship
+```
 
 **`from` and `to` syntax:**
 
@@ -557,7 +584,7 @@ Qualified names are most useful as block list items, where they read cleanly:
     - Relationship[relationshipType=invokedBy]
 ```
 
-specmd warns if the base class name or any qualifier property name is not
+SpecMD warns if the base class name or any qualifier property name is not
 found in the model.
 
 A mix of simple and structured entries within the same vocabulary is allowed.
@@ -601,11 +628,11 @@ SPDX-License-Identifier: Community-Spec-1.0
 
 ## Summary
 
-Information about the relationship between two Elements.
+A type of relationship between two elements.
 
 ## Description
 
-Provides information about the relationship between two Elements.
+RelationshipType is a vocabulary of directed relationships between software elements.
 
 ## Metadata
 
@@ -613,33 +640,129 @@ Provides information about the relationship between two Elements.
 
 ## Entries
 
-- hasContactPoint:
-  - description: The `from` Artifact has each `to` Agent as a contact point.
-  - from: Artifact
-  - to: Agent
-  - relationshipClass: ContactPointRelationship
 - affects:
-  - description: The `from` Vulnerability, Action or DefinedProcess affects
-      each `to` Element.
+  - description: The from Vulnerability, Action or DefinedProcess affects each to Element.
   - from:
     - Vulnerability
     - Action
     - DefinedProcess
   - to: Element
+  - relationshipClass: Relationship
+- hasEvidence:
+  - description: The subject element is supported by the object as evidence.
+  - from: Element
+  - to: Artifact
+- packagedBy:
+  - description: The subject is packaged by the object.
+  - from: Artifact
+  - to: Agent
 - delegatedTo:
-  - description: The `from` Agent delegates an action to the Agent of the `to` Relationship.
+  - description: The from Agent delegates an action to the Agent of the to Relationship.
   - from: Agent
   - to:
     - Relationship[relationshipType=invokedBy]
   - relationshipClass: LifecycleScopedRelationship
 ```
 
+## Model configuration (specmd.yml)
+
+An optional `specmd.yml` file at the model root controls parsing and
+generation behaviour. All keys are optional.
+
+```yaml
+# specmd.yml -- model configuration
+
+# SPDX license identifier for generated output documents.
+# Falls back to the license of the first namespace file if omitted.
+license: CC0-1.0
+
+# Ontology base URI (trailing slash added automatically if absent).
+# All namespace IRIs must start with this prefix.
+# If omitted, SpecMD attempts to derive it from a 'Core' namespace IRI
+# (SPDX 3 convention). Non-SPDX models should set this explicitly.
+base-uri: https://example.org/rdf/terms/
+
+# Explicit namespace ordering for generated output.
+# Namespaces not listed are excluded unless include-unlisted-namespaces is true.
+namespace-order:
+  - Core
+  - Security
+
+# Include namespaces not listed in namespace-order (default: false).
+include-unlisted-namespaces: false
+
+# Defaults for relationship-type vocabulary entries (see Vocabularies section).
+default-from: Element
+default-to: Element
+default-relationship-class: Relationship
+
+# PlantUML diagram settings.
+plantuml:
+  title: My Model
+  scale: 4000*4000
+
+# RDF output filenames (without extension).
+rdf:
+  filename: my-model
+  context-filename: my-model-context
+
+# OWL ontology metadata written into the generated RDF.
+ontology:
+  preferred-namespace-prefix: myns
+  label: My Model Ontology
+  title: My Model Ontology
+  abstract: This ontology defines terms for my model.
+  creator: My Organisation
+  license: https://creativecommons.org/publicdomain/zero/1.0/
+  references: https://example.org/my-model/
+  copyright: Copyright (C) My Organisation
+```
+
+| Top-level key | Type | Default | Description |
+| - | - | - | - |
+| `license` | string | *(from namespace file)* | SPDX license for generated output. |
+| `base-uri` | string (URI) | *(derived from model)* | Ontology base URI. Recommended for non-SPDX models. |
+| `namespace-order` | list | *(alphabetical)* | Ordered namespace list; unlisted are excluded. |
+| `include-unlisted-namespaces` | bool | `false` | Include namespaces absent from `namespace-order`. |
+| `default-from` | string or list | `Element` | Default `from` class for vocab entries. |
+| `default-to` | string or list | `Element` | Default `to` class for vocab entries. |
+| `default-relationship-class` | string | `Relationship` | Default OWL class for vocab entries. |
+| `plantuml` | mapping | -- | PlantUML diagram settings (see below). |
+| `rdf` | mapping | -- | RDF output filename settings (see below). |
+| `ontology` | mapping | -- | OWL ontology metadata (see below). |
+
+**`plantuml` keys:**
+
+| Key | Default | Description |
+| - | - | - |
+| `title` | `SPDXv3 model` | Diagram title. |
+| `scale` | `4000*4000` | Diagram canvas size. |
+
+**`rdf` keys:**
+
+| Key | Default | Description |
+| - | - | - |
+| `filename` | `spdx-model` | Output filename (without extension). |
+| `context-filename` | `spdx-context` | JSON-LD context filename (without extension). |
+
+**`ontology` keys:**
+
+| Key | Default | Description |
+| - | - | - |
+| `preferred-namespace-prefix` | `spdx` | `vann:preferredNamespacePrefix` value. |
+| `label` | *(SPDX label)* | `rdfs:label` for the ontology. |
+| `title` | *(SPDX title)* | `dcterms:title`. |
+| `abstract` | *(SPDX abstract)* | `dcterms:abstract`. |
+| `creator` | `SPDX Project` | `dcterms:creator`. |
+| `license` | *(SPDX license URI)* | `dcterms:license` (URI). |
+| `references` | *(SPDX references URI)* | `dcterms:references` (URI). |
+| `copyright` | *(SPDX copyright)* | `omg_ann:copyright`. |
+
 ## Verbal forms for expressions of provisions
 
-When formulating a provision, the following verbal forms shall be used to
-express the necessary level of normativity, as defined in
-*ISO/IEC Directives, Part 2 -- Principles and rules for the structure and
-drafting of ISO and IEC documents*:
+When a specification document uses normative language, verbal forms should be
+chosen consistently to signal the level of requirement. A common convention,
+used by ISO/IEC standards and IETF RFCs, is:
 
 | Verbal forms          | Type of provision                                                                   |
 | --------------------- | ----------------------------------------------------------------------------------- |
@@ -652,6 +775,11 @@ drafting of ISO and IEC documents*:
 Equivalent phrases or expressions may be used in certain cases,
 provided they maintain the exact meaning and level of normativity established
 by these verbal forms.
+
+> **SPDX 3 model:** The SPDX 3 specification follows *ISO/IEC Directives,
+> Part 2 -- Principles and rules for the structure and drafting of ISO and
+> IEC documents*. Use the verbal forms in the table above exactly as defined
+> there.
 
 ## Writing style
 
@@ -686,7 +814,7 @@ recommendations when writing paragraph text and incorporating links.
     Recommended:
 
     ```markdown
-    [SPDX Project](https://spdx.dev/)
+    [Example Project](https://example.org/)
     ```
 
     The `iri` field in the Metadata section of an Individual is an exception
@@ -762,7 +890,7 @@ Key differences between old and new format:
 | Datatype parent | `- SubclassOf: xsd:string` | `- subClassOf: xsd:string` |
 | Property in class | `- propName` (plain, then `- type: ...`) | `- propName:` (colon; no `type:` line) |
 | Format pattern | `- pattern: regex` | `- pattern: \`regex\`` (backtick-wrapped) |
-| Deprecation notice | `**DEPRECATED in SPDX X.**` in Description | `- deprecated: true` + `- deprecatedVersion: X` in Metadata |
+| Deprecation notice | `**DEPRECATED in X.**` in Description | `- deprecated: true` + `- deprecatedVersion: X` in Metadata |
 | Vocab `from`/`to` (single) | `- from: ClassName` | `- from: ClassName` |
 | Vocab `from`/`to` (multiple) | `- from: A, B, C` | YAML block list |
 
@@ -771,7 +899,7 @@ Key differences between old and new format:
 To check if your additions or edits are correctly formatted, use the
 following commands.
 
-Install specmd:
+Install SpecMD:
 
 ```shell
 pip install specmd
@@ -801,5 +929,3 @@ All options:
 specmd --help
 specmd generate --help
 ```
-
-[specmd]: https://github.com/spdx/specmd/

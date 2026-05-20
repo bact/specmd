@@ -112,7 +112,7 @@ class RunParams(SimpleNamespace):
 
         parser = argparse.ArgumentParser(
             prog="specmd",
-            description="Parse Markdown model definitions into RDF, diagrams, and docs.",
+            description="SpecMD -- parse Markdown model definitions into RDF, diagrams, and docs.",
         )
         parser.add_argument("-V", "--version", action="version", version=f"%(prog)s {self.parser_version}")
 
@@ -156,8 +156,8 @@ class RunParams(SimpleNamespace):
         # ── migrate ───────────────────────────────────────────────────────
         mig = sub.add_parser(
             "migrate",
-            help="Convert spec-parser Markdown format to specmd format.",
-            description="Migrate a model directory from spec-parser Markdown format to specmd format.",
+            help="Convert spec-parser Markdown format to SpecMD format.",
+            description="Migrate a model directory from spec-parser Markdown format to SpecMD format.",
         )
         _add_input_arg(mig)
         _add_output_arg(mig)
@@ -167,8 +167,8 @@ class RunParams(SimpleNamespace):
         # ── export ────────────────────────────────────────────────────────
         exp = sub.add_parser(
             "export",
-            help="Export a specmd model to another format.",
-            description="Export a specmd model directory to another format.",
+            help="Export a SpecMD model to another format.",
+            description="Export a SpecMD model directory to another format.",
         )
         _add_input_arg(exp)
         _add_output_arg(exp)

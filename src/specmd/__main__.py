@@ -25,7 +25,7 @@ def main() -> None:
     else:
         _level = logging.INFO
     root_logger, handler = setup_logging(level=_level)
-    root_logger.info("specmd starts.")
+    root_logger.info("SpecMD starts.")
 
     cfg = RunParams("specmd")
     if handler.has_errors():

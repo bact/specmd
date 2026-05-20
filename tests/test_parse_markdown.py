@@ -25,13 +25,13 @@ class TestSpecFile:
     def test_loads_valid_file(self, fixture_model_path: Path) -> None:
         sf = SpecFile(fixture_model_path / "Core" / "Core.md")
         assert sf.name == "Core"
-        assert sf.license == "Community-Spec-1.0"
+        assert sf.license == "CC0-1.0"
         assert "Summary" in sf.sections
         assert "Metadata" in sf.sections
 
     def test_frontmatter_populated(self, fixture_model_path: Path) -> None:
         sf = SpecFile(fixture_model_path / "Core" / "Core.md")
-        assert sf.frontmatter.get("SPDX-License-Identifier") == "Community-Spec-1.0"
+        assert sf.frontmatter.get("SPDX-License-Identifier") == "CC0-1.0"
 
     def test_missing_frontmatter_logs_error(self, tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
         f = tmp_path / "Bad.md"
