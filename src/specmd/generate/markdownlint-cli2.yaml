@@ -7,18 +7,18 @@ ignores:
   - "files/**"
 
 config:
-  # MD013 — line length: tables and code blocks are exempt (URLs and data can be long)
+  # MD013 -- line length: tables and code blocks are exempt (URLs and data can be long)
   MD013:
     line_length: 120
     tables: false
     code_blocks: false
 
-  # MD024 — duplicate heading names: allow repetition under different parent headings
+  # MD024 -- duplicate heading names: allow repetition under different parent headings
   # (e.g. "Summary" and "Description" appear under each class section in single-file output)
   MD024:
     siblings_only: true
 
-  # MD033 — inline HTML: the class-hierarchy page uses an interactive HTML tree
+  # MD033 -- inline HTML: the class-hierarchy page uses an interactive HTML tree
   MD033:
     allowed_elements:
       - br
@@ -28,6 +28,6 @@ config:
       - summary
       - ul
 
-  # MD041 — first line heading: frontmatter is not counted as content, so the first
+  # MD041 -- first line heading: frontmatter is not counted as content, so the first
   # heading (H1) after the YAML block satisfies this rule automatically.
   MD041: true

@@ -11,6 +11,7 @@ import pytest
 from specmd.parse.model import Model
 
 FIXTURE_MODEL = Path(__file__).parent / "fixtures" / "model"
+FIXTURE_MODEL_OLD_FORMAT = Path(__file__).parent / "fixtures" / "model-old-format"
 FIXTURE_EXAMPLES = Path(__file__).parent / "fixtures" / "spdx3-examples"
 
 

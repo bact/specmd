@@ -1,4 +1,4 @@
-# specmd.yml — example configuration for the SPDX 3.0 model
+# specmd.yml -- example configuration for the SPDX 3.0 model
 #
 # Place this file in the root of your model directory (alongside the
 # namespace folders such as Core/, Software/, etc.).
@@ -89,7 +89,7 @@ ontology:
   # dcterms:title on the ontology node (plain-text variant of the label).
   title: "System Package Data Exchange (SPDX) Ontology"
 
-  # dcterms:abstract — short prose description of what the ontology defines.
+  # dcterms:abstract -- short prose description of what the ontology defines.
   abstract: >-
     This ontology defines the terms and relationships used in the SPDX
     specification to describe system packages.
@@ -97,10 +97,10 @@ ontology:
   # dcterms:creator
   creator: "SPDX Project"
 
-  # dcterms:license — URI of the licence that governs the ontology itself.
+  # dcterms:license -- URI of the licence that governs the ontology itself.
   license: "https://spdx.org/licenses/Community-Spec-1.0.html"
 
-  # dcterms:references — URI of the normative specification.
+  # dcterms:references -- URI of the normative specification.
   references: "https://spdx.dev/specifications/"
 
   # omg-ann:copyright
@@ -127,5 +127,5 @@ plantuml:
   # Title placed at the top of the generated @startuml diagram.
   title: "SPDXv3 model"
 
-  # PlantUML scale directive — controls the output canvas size.
+  # PlantUML scale directive -- controls the output canvas size.
   scale: "4000*4000"

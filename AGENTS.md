@@ -46,13 +46,13 @@ lines if not handled carefully.
 (before the heading or content), not outside it.
 
 ```jinja2
-{# Wrong — blank line always emitted, even when block renders nothing #}
+{# Wrong -- blank line always emitted, even when block renders nothing #}
 
 {% if items %}
 ## Items
 {% endif %}
 
-{# Correct — blank only when block renders #}
+{# Correct -- blank only when block renders #}
 {% if items %}
 
 ## Items
@@ -67,7 +67,7 @@ lines if not handled carefully.
 - item{{extra}}
 ```
 
-**HTML in Markdown:** avoid `<br />` — it requires an explicit allowlist entry
+**HTML in Markdown:** avoid `<br />` -- it requires an explicit allowlist entry
 in markdownlint config (MD033). Use `&nbsp;` for indentation in hierarchy lists
 instead:
 

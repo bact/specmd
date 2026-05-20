@@ -56,6 +56,10 @@ def setup_logging(*, level: int = logging.INFO) -> tuple[logging.Logger, LogCoun
     handler = LogCountingHandler()
     handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
     root = logging.getLogger()
+    # Remove any handlers added by a previous call (e.g. when main() is invoked
+    # more than once in the same process, as main.py does for migrate + generate).
+    for h in root.handlers[:]:
+        root.removeHandler(h)
     root.addHandler(handler)
     root.setLevel(level)
     logging.getLogger("rdflib").setLevel(max(level, logging.ERROR))

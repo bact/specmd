@@ -241,6 +241,25 @@ class TestNestedListSection:
         assert isinstance(s.ikv["prop"]["minCount"], str)
         assert isinstance(s.ikv["prop"]["maxCount"], str)
 
+    def test_empty_property_no_attrs(self) -> None:
+        # Property with no sub-attributes (e.g. only - type: line was dropped
+        # during migration). BaseLoader yields '' for empty mapping values.
+        content = "- seeAlso:\n"
+        s = NestedListSection(content)
+        assert "seeAlso" in s.ikv
+        assert s.ikv["seeAlso"] == {}
+
+    def test_empty_property_mixed(self) -> None:
+        # Empty property alongside one with attributes -- both must parse.
+        content = dedent("""\
+            - seeAlso:
+            - name:
+              - minCount: 1
+        """)
+        s = NestedListSection(content)
+        assert s.ikv["seeAlso"] == {}
+        assert s.ikv["name"]["minCount"] == "1"
+
 
 class TestVocabularySection:
     def test_simple_entry(self) -> None:

@@ -513,13 +513,13 @@ The defaults for `from`, `to`, and `relationshipClass` may be overridden in
 
 **`from` and `to` syntax:**
 
-Single class — write the class name inline:
+Single class -- write the class name inline:
 
 ```markdown
   - from: Agent
 ```
 
-Multiple classes — use a YAML block list:
+Multiple classes -- use a YAML block list:
 
 ```markdown
   - from:

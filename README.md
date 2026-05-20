@@ -108,7 +108,7 @@ External tools required for specific formats:
 
 | Format | External prerequisite |
 | - | - |
-| `tex` | [pandoc](https://pandoc.org/) — used to convert Markdown fragments to LaTeX |
+| `tex` | [pandoc](https://pandoc.org/) -- used to convert Markdown fragments to LaTeX |
 | All others | None |
 
 ## spec-parser compatibility
@@ -121,6 +121,34 @@ It accepts spec-parser's original command-line arguments, internally runs
 
 Simply replace `python spec-parser/main.py` with `python specmd/main.py` in
 existing workflows.
+
+Or, in a GitHub workflow that checks out the repository, only the repository
+name needs to change - the checkout path, the pip install command, and ever
+main.py option stay the same:
+
+From:
+
+```yaml
+      - uses: actions/checkout@6
+        with:
+          repository: spdx/spec-parser
+          path: spec-parser
+      - run: |
+          pip install -r spec-parser/requirements.txt
+          python3 spec-parser/main.py --force --generate-mkdocs --output-mkdocs spdx-spec/docs/model spdx-3-model/model
+```
+
+To:
+
+```yaml
+      - uses: actions/checkout@6
+        with:
+          repository: bact/specmd  #changed
+          path: spec-parser
+      - run: |
+          pip install -r spec-parser/requirements.txt
+          python3 spec-parser/main.py --force --generate-mkdocs --output-mkdocs spdx-spec/docs/model spdx-3-model/model
+```
 
 ## History
 

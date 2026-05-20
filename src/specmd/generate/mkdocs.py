@@ -90,7 +90,7 @@ def _write_markdownlint_config(outpath: Path) -> None:
     """Write the bundled markdownlint-cli2 config into the output directory.
 
     Consumers of the generated docs can run ``markdownlint-cli2 "**/*.md"``
-    without supplying their own config — intentional patterns (HTML hierarchy
+    without supplying their own config -- intentional patterns (HTML hierarchy
     tree, long table lines, etc.) are already accounted for.
     """
     src = Path(__file__).parent / "markdownlint-cli2.yaml"

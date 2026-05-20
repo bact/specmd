@@ -103,22 +103,24 @@ def main() -> None:
 
     args = _parse_legacy_args()
 
-    tmpdir = Path(tempfile.mkdtemp(prefix="specmd_compat_"))
+    # mkdtemp creates the directory itself; _cmd_migrate rejects an existing
+    # output path unless --force is given.  Use a non-existent subdirectory so
+    # the migrate command can create it cleanly without needing --force.
+    workdir = Path(tempfile.mkdtemp(prefix="specmd_compat_"))
+    migrated = workdir / "src"
     try:
-        # Step 1: migrate old format → new format into tmpdir.
-        sys.argv = ["specmd", "migrate", str(args.input_dir), "--output", str(tmpdir)]
-        if args.force:
-            sys.argv.append("--force")
+        # Step 1: migrate old format → new format into migrated/.
+        sys.argv = ["specmd", "migrate", str(args.input_dir), "--output", str(migrated)]
         specmd_main()
 
         # Step 2: generate or validate from the migrated input.
         if args.no_output:
-            sys.argv = ["specmd", *_build_validate_argv(args, tmpdir)]
+            sys.argv = ["specmd", *_build_validate_argv(args, migrated)]
         else:
-            sys.argv = ["specmd", *_build_generate_argv(args, tmpdir)]
+            sys.argv = ["specmd", *_build_generate_argv(args, migrated)]
         specmd_main()
     finally:
-        shutil.rmtree(tmpdir, ignore_errors=True)
+        shutil.rmtree(workdir, ignore_errors=True)
 
 
 if __name__ == "__main__":
