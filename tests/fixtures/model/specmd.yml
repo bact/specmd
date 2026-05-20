@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: CC0-1.0
+# specmd.yml -- configuration for the SpecMD test fixture model
+
+license: CC0-1.0
+
+base-uri: https://example.org/rdf/terms/
+
+namespace-order:
+  - Core
+
+ontology:
+  preferred-namespace-prefix: core
+  label: Core Fixture Ontology
+  title: Core Fixture Ontology
+  abstract: Test fixture ontology for SpecMD.
+  creator: SpecMD Test Suite
+  license: https://creativecommons.org/publicdomain/zero/1.0/
+  references: https://github.com/bact/specmd/
+  copyright: Copyright (C) SpecMD Contributors
+
+rdf:
+  filename: core-fixture
+  context-filename: core-fixture-context
+
+plantuml:
+  title: Core Fixture Model
+  scale: 2000*2000

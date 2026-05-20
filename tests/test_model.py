@@ -40,7 +40,8 @@ class TestModelLoading:
     def test_individual_count(self, model: Model) -> None:
         assert len(model.individuals) == 1
 
-    def test_base_uri_derived_from_core(self, model: Model) -> None:
+    def test_base_uri(self, model: Model) -> None:
+        # fixture specmd.yml sets base-uri: https://example.org/rdf/terms/
         assert model.base_uri == "https://example.org/rdf/terms/"
 
     def test_class_iris(self, model: Model) -> None:
@@ -96,12 +97,13 @@ class TestNamespaceOrder:
         from tests.conftest import FIXTURE_MODEL
 
         shutil.copytree(FIXTURE_MODEL, tmp_path / "model")
+        # Always start without specmd.yml so each test controls config precisely.
+        (tmp_path / "model" / "specmd.yml").unlink(missing_ok=True)
         (tmp_path / "model" / "specmd.yml").write_text(yaml)
         return Model(tmp_path / "model")
 
-    def test_no_config_returns_all_alphabetically(self, model: Model) -> None:
-        # fixture model has no specmd.yml → all namespaces, alphabetical
-        assert model.config == {}
+    def test_namespace_order_from_config(self, model: Model) -> None:
+        # fixture model specmd.yml sets namespace-order: [Core]
         assert model.namespace_order() == ["Core"]
 
     def test_config_explicit_order(self, tmp_path: Path) -> None:

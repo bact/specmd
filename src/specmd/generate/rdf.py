@@ -193,9 +193,9 @@ def gen_rdf_ontology(model: Model) -> Graph:
     # Ontology node.
     ont_node = URIRef(uri_base)
     g.add((ont_node, RDF.type, OWL.Ontology))
-    g.add((ont_node, OWL.versionIRI, ont_node))
 
-    # owl:versionInfo from Core namespace metadata (W3C OWL2 BCP).
+    # owl:versionInfo / owl:versionIRI from namespace metadata.
+    # versionIRI is a distinct versioned URI (<base-uri><version>/), not the ontology IRI.
     version_str: str | None = None
     for ns in model.namespaces:
         v = ns.metadata.get("version") or ns.metadata.get("Version")
@@ -204,6 +204,8 @@ def gen_rdf_ontology(model: Model) -> Graph:
             break
     if version_str:
         g.add((ont_node, OWL.versionInfo, Literal(version_str)))
+        versioned_iri = URIRef(uri_base.rstrip("/") + "/" + version_str + "/")
+        g.add((ont_node, OWL.versionIRI, versioned_iri))
 
     # vann:preferredNamespacePrefix / vann:preferredNamespaceUri (W3C BCP for vocab publishing).
     g.add((ont_node, VANN.preferredNamespacePrefix, Literal(ont["preferred-namespace-prefix"])))
@@ -289,20 +291,23 @@ def _gen_classes(model: Model, g: Graph) -> None:
                     ),
                 )
             )
-            # OWL layer: coverage + disjointness among direct subclasses.
+            # OWL 2 EL/QL/RL-compatible disjointness among direct subclasses.
             if c.direct_subclasses:
-                sub_list = Collection(g, None)  # type: ignore[arg-type]
+                dc_node = BNode()
+                g.add((dc_node, RDF.type, OWL.AllDisjointClasses))
+                members_list = Collection(g, None)  # type: ignore[arg-type]
                 for fq in c.direct_subclasses:
-                    sub_list.append(URIRef(model.classes[fq].iri))
-                g.add((node, OWL.disjointUnionOf, sub_list.uri))
+                    members_list.append(URIRef(model.classes[fq].iri))
+                g.add((dc_node, OWL.members, members_list.uri))
 
+        # Every class is also a sh:NodeShape so all constraints are visible to SHACL processors.
+        g.add((node, RDF.type, SH.NodeShape))
         if "spdxId" in c.all_properties:
             g.add((node, SH.nodeKind, SH.IRI))
         else:
             g.add((node, SH.nodeKind, SH.BlankNodeOrIRI))
 
         if c.properties:
-            g.add((node, RDF.type, SH.NodeShape))
             for p in c.properties:
                 fqprop = c.properties[p]["fqname"]
                 if fqprop == "/Core/spdxId":
@@ -347,8 +352,7 @@ def _gen_classes(model: Model, g: Graph) -> None:
 
                 elif typename in model.vocabularies:
                     dt_v = model.vocabularies[typename]
-                    g.add((bnode, SH["class"], URIRef(dt_v.iri)))
-                    # sh:nodeKind sh:IRI is redundant when sh:in already enumerates IRI members.
+                    # sh:in enumerates exactly the valid IRIs; sh:class is redundant.
                     lst = Collection(g, None)  # type: ignore[arg-type]
                     for e in dt_v.entries:
                         lst.append(URIRef(dt_v.iri + "/" + e))
@@ -361,13 +365,11 @@ def _gen_classes(model: Model, g: Graph) -> None:
                     t = _xsd_range(dt_d.metadata["subClassOf"], prop.iri)
                     if t:
                         g.add((bnode, SH.datatype, t))
-                        # sh:nodeKind sh:Literal is redundant when sh:datatype is present.
 
                 else:
                     t = _xsd_range(typename, prop.iri)
                     if t:
                         g.add((bnode, SH.datatype, t))
-                        # sh:nodeKind sh:Literal is redundant when sh:datatype is present.
 
                 mincount = c.properties[p]["minCount"]
                 if int(mincount) != 0:
@@ -455,15 +457,7 @@ def _gen_vocabularies(model: Model, g: Graph) -> None:
         if example:
             _emit_example(g, node, example)
 
-        # owl:equivalentClass + owl:oneOf makes this a closed enumeration in OWL.
-        individuals_list = Collection(g, None)  # type: ignore[arg-type]
-        for e in v.entries:
-            enode = URIRef(v.iri + "/" + e)
-            individuals_list.append(enode)
-        equiv_node = BNode()
-        g.add((equiv_node, OWL.oneOf, individuals_list.uri))
-        g.add((node, OWL.equivalentClass, equiv_node))
-
+        # Enum membership via rdf:type on each entry; closed-world enforcement via SHACL sh:in.
         for e, d in v.entries.items():
             enode = URIRef(v.iri + "/" + e)
             g.add((enode, RDF.type, OWL.NamedIndividual))
@@ -534,7 +528,7 @@ def _gen_individuals(model: Model, g: Graph) -> None:
 def _jsonld_context(g: Graph, uri_base: str) -> dict[str, Any]:
     uri_base_stripped = uri_base.rstrip("/")
 
-    terms: dict[str, str | dict[str, Any]] = {}
+    terms: dict[str, dict[str, Any]] = {}
 
     # Collect vocabulary classes (those with sh:in enumerations).
     vocab_named_individuals: set[Node] = set()
@@ -547,47 +541,69 @@ def _jsonld_context(g: Graph, uri_base: str) -> dict[str, Any]:
                 if typ != OWL.NamedIndividual:
                     vocab_classes.add(typ)
 
-    # Build per-vocabulary-class enum entries for local contexts.
-    # Maps vocab_class IRI → { entry_name: entry_IRI_str }
+    # Build per-vocabulary-class enum entries and top-level alias keys.
+    #
+    # Each vocab class gets entries like:
+    #   vocab_entries["https://.../SupportType"] = {"noSupport": "https://.../noSupport", ...}
+    #   vocab_aliases["https://.../SupportType"] = {"noSupport": "SupportType_noSupport", ...}
+    #
+    # Top-level alias terms ("SupportType_noSupport": {"@id": ..., "@protected": true}) are
+    # emitted once and referenced by name from each property's local @context, avoiding
+    # repeated inline expansion for vocab classes shared across multiple properties.
     vocab_entries: dict[str, dict[str, str]] = {}
+    vocab_aliases: dict[str, dict[str, str]] = {}
     for v_cls in vocab_classes:
         entries: dict[str, str] = {}
         for ind in vocab_named_individuals:
             if (ind, RDF.type, v_cls) in g:
-                # Entry name is the last segment of the IRI.
                 entry_name = str(ind).rsplit("/", 1)[-1]
                 entries[entry_name] = str(ind)
-        vocab_entries[str(v_cls)] = entries
+        v_cls_iri = str(v_cls)
+        cls_name = v_cls_iri.rsplit("/", 1)[-1]
+        vocab_entries[v_cls_iri] = entries
+        vocab_aliases[v_cls_iri] = {name: f"{cls_name}_{name}" for name in entries}
 
-    def _get_subject_term(subject: URIRef) -> str | dict[str, Any]:
+    def _get_subject_term(subject: URIRef) -> dict[str, Any]:
         if (subject, RDF.type, OWL.ObjectProperty) in g:
             for _, _, o in g.triples((subject, RDFS.range, None)):
                 o_str = str(o)
                 if o in vocab_classes:
-                    # Enum range: @type:@vocab with a local @context that enumerates valid
-                    # members explicitly, preventing wildcard expansion to unknown IRIs.
-                    local_ctx: dict[str, Any] = {}
-                    for entry_name, entry_iri in vocab_entries.get(o_str, {}).items():
-                        local_ctx[entry_name] = {"@id": entry_iri}
+                    # Enum range: @type:@vocab with a local @context that maps each entry
+                    # name to its top-level alias (defined once, referenced here by name).
+                    local_ctx: dict[str, Any] = dict(vocab_aliases.get(o_str, {}))
                     return {
                         "@id": str(subject),
                         "@type": "@vocab",
                         "@context": local_ctx,
+                        "@protected": True,
                     }
                 if (o, RDF.type, OWL.Class) in g:
                     # Class range: @type:@id so the value expands to a full IRI, not @vocab.
                     return {
                         "@id": str(subject),
                         "@type": "@id",
+                        "@protected": True,
                     }
         elif (subject, RDF.type, OWL.DatatypeProperty) in g:
             for _, _, o in g.triples((subject, RDFS.range, None)):
                 return {
                     "@id": str(subject),
                     "@type": str(o),
+                    "@protected": True,
                 }
 
-        return str(subject)
+        # Class, vocabulary class, named individual, or untyped property --
+        # protect to prevent redefinition when additional contexts are layered.
+        return {"@id": str(subject), "@protected": True}
+
+    # Emit one top-level alias entry per vocab entry (e.g. "SupportType_noSupport").
+    # Properties reference these by alias name in their local @context.
+    for v_cls_iri, entries in vocab_entries.items():
+        aliases = vocab_aliases[v_cls_iri]
+        for entry_name, entry_iri in sorted(entries.items()):
+            alias_key = aliases[entry_name]
+            if alias_key not in terms:
+                terms[alias_key] = {"@id": entry_iri, "@protected": True}
 
     for subject in sorted(g.subjects(unique=True), key=str):
         if not isinstance(subject, URIRef):
@@ -611,7 +627,7 @@ def _jsonld_context(g: Graph, uri_base: str) -> dict[str, Any]:
 
         if key in terms:
             _existing = terms[key]
-            current = _existing["@id"] if isinstance(_existing, dict) else _existing
+            current = _existing["@id"]
             logger.error(
                 "Duplicate JSON-LD context key %r: <%s> conflicts with already-mapped <%s>. "
                 "Rename one term or move it to a different namespace.",
@@ -623,8 +639,9 @@ def _jsonld_context(g: Graph, uri_base: str) -> dict[str, Any]:
 
         terms[key] = _get_subject_term(subject)
 
-    terms["spdx"] = uri_base
-    terms["spdxId"] = "@id"
-    terms["type"] = "@type"
+    # Well-known aliases: protected so additional contexts cannot redefine them.
+    terms["spdx"] = {"@id": uri_base, "@prefix": True, "@protected": True}
+    terms["spdxId"] = {"@id": "@id", "@protected": True}
+    terms["type"] = {"@id": "@type", "@protected": True}
 
     return {"@context": terms}

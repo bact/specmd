@@ -7,3 +7,5 @@ config:
     line_length: 80
     tables: false
     code_blocks: false
+  # MD060 -- table column style: disable (| - | compact separators are accepted)
+  MD060: false

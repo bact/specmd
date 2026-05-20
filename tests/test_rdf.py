@@ -99,13 +99,13 @@ class TestRDFIsDefinedBy:
 
 
 class TestRDFVocabularies:
-    def test_owl_one_of_on_vocabulary(self, rdf_graph: Graph, model: Model) -> None:
+    def test_no_owl_one_of_on_vocabulary(self, rdf_graph: Graph, model: Model) -> None:
+        """owl:equivalentClass+owl:oneOf removed: not in OWL 2 EL/QL/RL profiles.
+        Enum semantics are handled by SHACL sh:in; membership via rdf:type."""
         for v in model.vocabularies.values():
             node = URIRef(v.iri)
             equiv_classes = list(rdf_graph.objects(node, OWL.equivalentClass))
-            assert equiv_classes, f"No owl:equivalentClass on vocabulary {v.iri}"
-            found_one_of = any((ec, OWL.oneOf, None) in rdf_graph for ec in equiv_classes)
-            assert found_one_of, f"owl:oneOf missing on {v.iri}"
+            assert not equiv_classes, f"Unexpected owl:equivalentClass on vocabulary {v.iri}"
 
     def test_vocabulary_entries_are_named_individuals(self, rdf_graph: Graph, model: Model) -> None:
         for v in model.vocabularies.values():
@@ -114,9 +114,14 @@ class TestRDFVocabularies:
                 assert (enode, RDF.type, OWL.NamedIndividual) in rdf_graph
 
     def test_no_sh_node_kind_iri_with_sh_in(self, rdf_graph: Graph) -> None:
-        """sh:nodeKind sh:IRI must not appear alongside sh:in (issue #1152)."""
+        """sh:nodeKind sh:IRI must not appear alongside sh:in."""
         for bnode in rdf_graph.subjects(SH["in"], None):
             assert (bnode, SH.nodeKind, SH.IRI) not in rdf_graph, "Superfluous sh:nodeKind sh:IRI alongside sh:in"
+
+    def test_no_sh_class_with_sh_in(self, rdf_graph: Graph) -> None:
+        """sh:class is redundant alongside sh:in and must not be emitted."""
+        for bnode in rdf_graph.subjects(SH["in"], None):
+            assert (bnode, SH["class"], None) not in rdf_graph, "Redundant sh:class alongside sh:in"
 
 
 class TestRDFSHACL:
@@ -130,23 +135,35 @@ class TestRDFSHACL:
             found_not = any((sp, SH["not"], None) in rdf_graph for sp in sh_props)
             assert found_not, f"Abstract class {c.iri} missing sh:not constraint"
 
-    def test_abstract_class_has_disjoint_union(self, rdf_graph: Graph, model: Model) -> None:
-        """Abstract classes with subclasses get owl:disjointUnionOf for OWL reasoners."""
+    def test_abstract_class_has_all_disjoint_classes(self, rdf_graph: Graph, model: Model) -> None:
+        """Abstract classes with subclasses use owl:AllDisjointClasses (OWL 2 EL-compatible).
+        owl:disjointUnionOf is not in OWL 2 EL/QL/RL profiles."""
+        from rdflib.collection import Collection
+
         for c in model.classes.values():
             if c.metadata.get("abstract") != "true" or not c.direct_subclasses:
                 continue
-            node = URIRef(c.iri)
-            assert (node, OWL.disjointUnionOf, None) in rdf_graph, f"Abstract class {c.iri} missing owl:disjointUnionOf"
+            # Expect a blank node typed owl:AllDisjointClasses whose owl:members
+            # contains all direct subclasses.
+            found = False
+            for adc in rdf_graph.subjects(RDF.type, OWL.AllDisjointClasses):
+                members_list = rdf_graph.value(adc, OWL.members)
+                if members_list:
+                    members = list(Collection(rdf_graph, members_list))
+                    sub_iris = {URIRef(model.classes[fq].iri) for fq in c.direct_subclasses}
+                    if sub_iris == set(members):
+                        found = True
+                        break
+            assert found, f"Abstract class {c.iri} missing owl:AllDisjointClasses for {c.direct_subclasses}"
 
     def test_no_sh_node_kind_literal_with_sh_datatype(self, rdf_graph: Graph) -> None:
         """sh:nodeKind sh:Literal must not appear alongside sh:datatype (issue #1152)."""
         for bnode in rdf_graph.subjects(SH.datatype, None):
             assert (bnode, SH.nodeKind, SH.Literal) not in rdf_graph, "Superfluous sh:nodeKind sh:Literal alongside sh:datatype"
 
-    def test_concrete_class_is_node_shape(self, rdf_graph: Graph, model: Model) -> None:
+    def test_all_classes_are_node_shapes(self, rdf_graph: Graph, model: Model) -> None:
+        """All classes are sh:NodeShape so sh:nodeKind and sh:property constraints are seen."""
         for c in model.classes.values():
-            if not c.properties:
-                continue
             node = URIRef(c.iri)
             assert (node, RDF.type, SH.NodeShape) in rdf_graph
 
@@ -170,13 +187,22 @@ class TestJSONLDContext:
 
     def test_context_has_spdx_key(self, ctx: dict) -> None:
         assert "spdx" in ctx["@context"]
-        assert ctx["@context"]["spdx"] == BASE
+        spdx = ctx["@context"]["spdx"]
+        assert isinstance(spdx, dict)
+        assert spdx["@id"] == BASE
+        assert spdx.get("@protected") is True
 
     def test_spdx_id_maps_to_at_id(self, ctx: dict) -> None:
-        assert ctx["@context"]["spdxId"] == "@id"
+        entry = ctx["@context"]["spdxId"]
+        assert isinstance(entry, dict)
+        assert entry["@id"] == "@id"
+        assert entry.get("@protected") is True
 
     def test_type_maps_to_at_type(self, ctx: dict) -> None:
-        assert ctx["@context"]["type"] == "@type"
+        entry = ctx["@context"]["type"]
+        assert isinstance(entry, dict)
+        assert entry["@id"] == "@type"
+        assert entry.get("@protected") is True
 
     def test_data_property_has_at_type(self, ctx: dict) -> None:
         # name is DataProperty → should have @type pointing to xsd:string.
@@ -205,9 +231,10 @@ class TestJSONLDContext:
 
 
 class TestRDFPrefixes:
-    def test_spdx_prefix_bound(self, rdf_graph: Graph) -> None:
+    def test_ontology_prefix_bound(self, rdf_graph: Graph) -> None:
+        # fixture specmd.yml sets preferred-namespace-prefix: core
         prefixes = dict(rdf_graph.namespaces())
-        assert "spdx" in prefixes
+        assert "core" in prefixes
 
     def test_namespace_prefix_bound(self, rdf_graph: Graph) -> None:
         prefixes = dict(rdf_graph.namespaces())

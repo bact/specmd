@@ -31,6 +31,8 @@ def _make_model(tmp_path: Path, yaml: str = "") -> Model:
     """Copy the fixture model into *tmp_path* and write *yaml* as specmd.yml."""
     dest = tmp_path / "model"
     shutil.copytree(FIXTURE_MODEL, dest)
+    # Always start without specmd.yml so each test controls config precisely.
+    (dest / "specmd.yml").unlink(missing_ok=True)
     if yaml:
         (dest / "specmd.yml").write_text(yaml, encoding="utf-8")
     return Model(dest)
@@ -72,6 +74,30 @@ class TestConfigLoading:
         # Extra keys don't crash loading; they are simply ignored by generators.
         m = _make_model(tmp_path, "custom-key: some-value\n")
         assert m.config.get("custom-key") == "some-value"
+
+
+# ---------------------------------------------------------------------------
+# base-uri
+# ---------------------------------------------------------------------------
+
+
+class TestBaseUriConfig:
+    def test_base_uri_from_config(self, tmp_path: Path) -> None:
+        m = _make_model(tmp_path, "base-uri: https://custom.example.org/terms/\n")
+        assert m.base_uri == "https://custom.example.org/terms/"
+
+    def test_base_uri_from_config_trailing_slash_added(self, tmp_path: Path) -> None:
+        m = _make_model(tmp_path, "base-uri: https://custom.example.org/terms\n")
+        assert m.base_uri == "https://custom.example.org/terms/"
+
+    def test_base_uri_falls_back_to_heuristic(self, tmp_path: Path) -> None:
+        # No base-uri in config → heuristic from Core namespace IRI.
+        m = _make_model(tmp_path)
+        assert m.base_uri == "https://example.org/rdf/terms/"
+
+    def test_base_uri_overrides_heuristic(self, tmp_path: Path) -> None:
+        m = _make_model(tmp_path, "base-uri: https://override.example.org/rdf/\n")
+        assert m.base_uri == "https://override.example.org/rdf/"
 
 
 # ---------------------------------------------------------------------------
@@ -279,8 +305,8 @@ class TestLicenseConfig:
     def test_license_falls_back_to_namespace_source(self, tmp_path: Path) -> None:
         # No explicit config key -- should pick up license from namespace source file.
         m = _make_model(tmp_path)
-        # Fixture namespace file carries Community-Spec-1.0.
-        assert m.spdx_license == "Community-Spec-1.0"
+        # Fixture namespace file carries CC0-1.0.
+        assert m.spdx_license == "CC0-1.0"
 
     def test_license_config_overrides_namespace_source(self, tmp_path: Path) -> None:
         m = _make_model(tmp_path, "license: MIT\n")
@@ -295,7 +321,7 @@ class TestLicenseConfig:
         page = next((out / "Core" / "Classes").glob("*.md"))
         content = page.read_text()
         assert content.startswith("---\n")
-        assert "SPDX-License-Identifier: Community-Spec-1.0" in content
+        assert "SPDX-License-Identifier: CC0-1.0" in content
 
     def test_singlefile_frontmatter_contains_license(self, tmp_path: Path) -> None:
         m = _make_model(tmp_path / "m", "namespace-order:\n  - Core\nlicense: CC0-1.0\n")
