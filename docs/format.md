@@ -237,7 +237,7 @@ Allowed headings:
   - `deprecatedVersion`: \<version_string\> *(Optional)*
   - `isReplacedBy`: \<fqname_or_IRI\> *(Optional)*
 - Properties *(Optional)*
-  - `propName:` *(colon after name; property type is looked up from the property definition)*
+  - `propName:` *(colon after name; type looked up from property definition)*
     - `minCount`: \<number\> *(Optional)*
     - `maxCount`: \<number\> *(Optional)*
   - ...
@@ -371,8 +371,8 @@ Allowed headings:
 - Metadata
   - `name`: \<individual_name\>
   - `type`: \<class_name\>
-  - `iri`: \<IRI\> *(Optional; overrides the default IRI derived from namespace and name)*
-  - `sameAs`: \<IRI\> *(Optional; declares an `owl:sameAs` equivalence to an external IRI)*
+  - `iri`: \<IRI\> *(Optional; overrides the default IRI derived from name)*
+  - `sameAs`: \<IRI\> *(Optional; declares `owl:sameAs` to an external IRI)*
   - `sinceVersion`, `deprecated`, `deprecatedVersion`, `isReplacedBy` *(Optional)*
 - Property Values
   - \<property_name\>: \<property_value\>
@@ -483,8 +483,10 @@ a structured format may be used:
 
 - entryName:
   - description: A description of this entry.
-  - from: SourceClass, AnotherClass
-  - to: TargetClass
+  - from: SourceClass
+  - to:
+    - TargetClass
+    - AnotherTargetClass
   - relationshipClass: ConstraintRelationship
   - sinceVersion: 3.0
   - deprecated: true
@@ -495,16 +497,68 @@ a structured format may be used:
 Structured entry fields:
 
 | Field | Type | Default | Description |
-|---|---|---|---|
-| `description` | string | `""` | Human-readable description of this entry. |
-| `from` | comma-separated names | `Element` | Class(es) that may be the `from` element of a relationship using this entry. |
-| `to` | comma-separated names | `Element` | Class(es) that may be the `to` element. |
-| `relationshipClass` | string | `Relationship` | The relationship class or subclass constrained to use this entry. |
-| `sinceVersion` | string | -- | Version in which this entry was introduced. |
+| - | - | - | - |
+| `description` | string | `""` | Human-readable description. |
+| `from` | class name or list | configurable | Source class(es) for this relationship type. |
+| `to` | class name or list | configurable | Target class(es) for this relationship type. |
+| `relationshipClass` | class name | configurable | Relationship OWL class for this entry. |
+| `sinceVersion` | string | -- | Version when this entry was introduced. |
 | `deprecated` | `true` | -- | Marks this entry as deprecated. |
-| `deprecatedVersion` | string | -- | Version in which this entry was deprecated. |
-| `isReplacedBy` | string | -- | Recommended replacement entry name or FQ name. |
-| `example` | URI or inline string | -- | A usage example -- URI to a JSON-LD/TTL file or inline snippet. |
+| `deprecatedVersion` | string | -- | Version when deprecation was announced. |
+| `isReplacedBy` | string | -- | Recommended replacement. |
+| `example` | URI or inline string | -- | Usage example. |
+
+The defaults for `from`, `to`, and `relationshipClass` may be overridden in
+`specmd.yml` via `default-from`, `default-to`, and `default-relationship-class`.
+
+**`from` and `to` syntax:**
+
+Single class — write the class name inline:
+
+```markdown
+  - from: Agent
+```
+
+Multiple classes — use a YAML block list:
+
+```markdown
+  - from:
+    - Vulnerability
+    - Action
+    - DefinedProcess
+```
+
+Do not use a comma-separated string for multiple values.
+An inline YAML list (`[A, B]`) is also accepted but not recommended
+because it conflicts with the qualifier syntax (see below).
+
+**Class name qualifiers:**
+
+A class name in `from` or `to` may carry a qualifier block that constrains
+which instances of that class are valid:
+
+```text
+ClassName[propName=value]
+```
+
+Multiple allowed values for one property are separated by `,`;
+multiple properties are separated by `;`:
+
+| Example | Meaning |
+| - | - |
+| `Relationship[relationshipType=invokedBy]` | `relationshipType` = `invokedBy` |
+| `Relationship[relationshipType=a,b,c]` | `relationshipType` ∈ {a, b, c} |
+| `Relationship[t=a,b;scope=build]` | `t` ∈ {a, b} and `scope` = `build` |
+
+Qualified names are most useful as block list items, where they read cleanly:
+
+```markdown
+  - to:
+    - Relationship[relationshipType=invokedBy]
+```
+
+specmd warns if the base class name or any qualifier property name is not
+found in the model.
 
 A mix of simple and structured entries within the same vocabulary is allowed.
 
@@ -565,9 +619,19 @@ Provides information about the relationship between two Elements.
   - to: Agent
   - relationshipClass: ContactPointRelationship
 - affects:
-  - description: The `from` Vulnerability, Action or DefinedProcess affects each `to` Element.
-  - from: Vulnerability, Action, DefinedProcess
+  - description: The `from` Vulnerability, Action or DefinedProcess affects
+      each `to` Element.
+  - from:
+    - Vulnerability
+    - Action
+    - DefinedProcess
   - to: Element
+- delegatedTo:
+  - description: The `from` Agent delegates an action to the Agent of the `to` Relationship.
+  - from: Agent
+  - to:
+    - Relationship[relationshipType=invokedBy]
+  - relationshipClass: LifecycleScopedRelationship
 ```
 
 ## Verbal forms for expressions of provisions
@@ -699,6 +763,8 @@ Key differences between old and new format:
 | Property in class | `- propName` (plain, then `- type: ...`) | `- propName:` (colon; no `type:` line) |
 | Format pattern | `- pattern: regex` | `- pattern: \`regex\`` (backtick-wrapped) |
 | Deprecation notice | `**DEPRECATED in SPDX X.**` in Description | `- deprecated: true` + `- deprecatedVersion: X` in Metadata |
+| Vocab `from`/`to` (single) | `- from: ClassName` | `- from: ClassName` |
+| Vocab `from`/`to` (multiple) | `- from: A, B, C` | YAML block list |
 
 ## Checking if everything is ok
 

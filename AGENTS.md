@@ -75,6 +75,23 @@ instead:
 {{ '&nbsp;' * depth }}{{type_link(name)}}
 ```
 
+## Vocabulary qualifier syntax
+
+`from`/`to` items in relationship-type vocab entries may carry a qualifier block:
+
+```
+ClassName[propName=value]
+ClassName[propName=v1,v2,v3]
+ClassName[propName=v1,v2;otherProp=v3]
+```
+
+Rules:
+- `;` separates distinct properties.
+- `,` separates multiple allowed values for one property.
+- Whitespace around delimiters is stripped.
+- Parsed by `_parse_qualified_class` → `(base: str, qualifiers: dict[str, list[str]])`.
+- Validation warns if base class or qualifier property names are not in the model.
+
 ## Python
 
 - Min version: Python 3.11.

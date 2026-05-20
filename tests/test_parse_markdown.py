@@ -10,7 +10,15 @@ from textwrap import dedent
 
 import pytest
 
-from specmd.parse.markdown import ContentSection, NestedListSection, SingleListSection, SpecFile, VocabularySection
+from specmd.parse.markdown import (
+    ContentSection,
+    NestedListSection,
+    SingleListSection,
+    SpecFile,
+    VocabDefaults,
+    VocabularySection,
+    _split_class_list,
+)
 
 
 class TestSpecFile:
@@ -293,16 +301,99 @@ class TestVocabularySection:
         s = VocabularySection(content)
         assert s.entries["uses"]["description"] == ""
 
-    def test_from_to_split_on_comma(self) -> None:
+    def test_from_to_yaml_block_list(self) -> None:
         content = dedent("""\
             - rel:
               - description: Desc.
-              - from: Agent, Tool, Element
-              - to: Artifact, Element
+              - from:
+                  - Agent
+                  - Tool
+              - to:
+                  - Artifact
         """)
         s = VocabularySection(content)
-        assert s.entries["rel"]["from"] == ["Agent", "Tool", "Element"]
-        assert s.entries["rel"]["to"] == ["Artifact", "Element"]
+        assert s.entries["rel"]["from"] == ["Agent", "Tool"]
+        assert s.entries["rel"]["to"] == ["Artifact"]
+
+    def test_from_to_yaml_inline_list(self) -> None:
+        content = dedent("""\
+            - rel:
+              - description: Desc.
+              - from: [Agent, Tool]
+              - to: [Artifact]
+        """)
+        s = VocabularySection(content)
+        assert s.entries["rel"]["from"] == ["Agent", "Tool"]
+        assert s.entries["rel"]["to"] == ["Artifact"]
+
+    def test_from_to_bracket_constraint_in_list(self) -> None:
+        content = dedent("""\
+            - rel:
+              - description: Desc.
+              - from: Agent
+              - to:
+                  - Relationship[relationshipType=invokedBy]
+        """)
+        s = VocabularySection(content)
+        assert s.entries["rel"]["to"] == ["Relationship[relationshipType=invokedBy]"]
+
+    def test_from_to_single_string_no_warning(self, caplog: pytest.LogCaptureFixture) -> None:
+        content = dedent("""\
+            - rel:
+              - description: Desc.
+              - from: Agent
+              - to: Artifact
+        """)
+        with caplog.at_level(logging.WARNING):
+            s = VocabularySection(content)
+        assert s.entries["rel"]["from"] == ["Agent"]
+        assert "commas" not in caplog.text
+
+    def test_from_to_comma_string_warns(self, caplog: pytest.LogCaptureFixture) -> None:
+        content = dedent("""\
+            - rel:
+              - description: Desc.
+              - from: Agent, Tool
+        """)
+        with caplog.at_level(logging.WARNING):
+            VocabularySection(content)
+        assert "commas" in caplog.text
+        assert "YAML list" in caplog.text
+
+    def test_custom_default_relationship_class(self) -> None:
+        content = "- plain: A description."
+        s = VocabularySection(content, defaults=VocabDefaults(default_relationship_class="LifecycleRelationship"))
+        assert s.entries["plain"]["relationshipClass"] == "LifecycleRelationship"
+
+    def test_explicit_relationship_class_overrides_default(self) -> None:
+        content = dedent("""\
+            - rel:
+              - description: Desc.
+              - relationshipClass: RoleRelationship
+        """)
+        s = VocabularySection(content, defaults=VocabDefaults(default_relationship_class="LifecycleRelationship"))
+        assert s.entries["rel"]["relationshipClass"] == "RoleRelationship"
+
+    def test_custom_default_from(self) -> None:
+        content = "- plain: A description."
+        s = VocabularySection(content, defaults=VocabDefaults(default_from=["Agent", "Tool"]))
+        assert s.entries["plain"]["from"] == ["Agent", "Tool"]
+
+    def test_custom_default_to(self) -> None:
+        content = "- plain: A description."
+        s = VocabularySection(content, defaults=VocabDefaults(default_to=["Artifact"]))
+        assert s.entries["plain"]["to"] == ["Artifact"]
+
+    def test_explicit_from_to_override_defaults(self) -> None:
+        content = dedent("""\
+            - rel:
+              - description: Desc.
+              - from: Element
+              - to: Element
+        """)
+        s = VocabularySection(content, defaults=VocabDefaults(default_from=["Agent"], default_to=["Artifact"]))
+        assert s.entries["rel"]["from"] == ["Element"]
+        assert s.entries["rel"]["to"] == ["Element"]
 
     def test_mixed_simple_and_structured(self) -> None:
         content = dedent("""\
@@ -315,3 +406,26 @@ class TestVocabularySection:
         assert s.entries["plain"]["description"] == "A plain description."
         assert s.entries["plain"]["relationshipClass"] == "Relationship"
         assert s.entries["fancy"]["relationshipClass"] == "FancyRelationship"
+
+
+class TestSplitClassList:
+    def test_simple_single(self) -> None:
+        assert _split_class_list("Element") == ["Element"]
+
+    def test_simple_multiple(self) -> None:
+        assert _split_class_list("Agent, Tool, Element") == ["Agent", "Tool", "Element"]
+
+    def test_bracket_single(self) -> None:
+        assert _split_class_list("Relationship[type=invokedBy]") == ["Relationship[type=invokedBy]"]
+
+    def test_bracket_comma_inside_not_split(self) -> None:
+        assert _split_class_list("Foo[a=1, b=2]") == ["Foo[a=1, b=2]"]
+
+    def test_bracket_mixed_with_bare(self) -> None:
+        assert _split_class_list("Foo[a=1, b=2], Bar") == ["Foo[a=1, b=2]", "Bar"]
+
+    def test_empty_string(self) -> None:
+        assert _split_class_list("") == []
+
+    def test_strips_whitespace(self) -> None:
+        assert _split_class_list("  Agent ,  Tool  ") == ["Agent", "Tool"]

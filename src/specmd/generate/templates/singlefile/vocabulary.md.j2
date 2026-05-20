@@ -6,12 +6,27 @@
 | **Name** | {{metadata["name"]}} |
 {% endblock %}
 
+{#- Wrap cell content with exactly one leading/trailing space.
+    When content is empty, output a single space so the cell is "| |" not "|  |". -#}
+{% macro cell(content) %}{% if content %} {{content}} {% else %} {% endif %}{% endmacro %}
+
+{% macro example_suffix(val) %}{% if val.get("example") %} *Example: {% if val["example"].startswith("http://") or val["example"].startswith("https://") %}[link]({{val["example"]}}){% else %}`{{val["example"]}}`{% endif %}*{% endif %}{% endmacro %}
+
 {% block extra %}
 
 #### Entries
 
+{% if is_relationship_vocab %}
+| Name | From | To | Description | Relationship class |
+| - | - | - | - | - |
 {% for name, val in entries | dictsort %}
-{% set extra %}{% if val["from"] != ["Element"] or val["to"] != ["Element"] or val["relationshipClass"] != "Relationship" %} (from: {{val["from"] | join(", ")}}, to: {{val["to"] | join(", ")}}, relationshipClass: {{val["relationshipClass"]}}){% endif %}{% if val.get("example") %} *Example: {% if val["example"].startswith("http://") or val["example"].startswith("https://") %}[link]({{val["example"]}}){% else %}`{{val["example"]}}`{% endif %}*{% endif %}{% endset %}
-- **{{name}}**: {{val["description"]}}{{extra}}
+|{{cell("**" ~ name ~ "**")}}|{{cell(val["from"] | join(", "))}}|{{cell(val["to"] | join(", "))}}|{{cell(val["description"] ~ example_suffix(val))}}|{{cell(val["relationshipClass"])}}|
 {% endfor %}
+{% else %}
+| Name | Description |
+| - | - |
+{% for name, val in entries | dictsort %}
+|{{cell("**" ~ name ~ "**")}}|{{cell(val["description"] ~ example_suffix(val))}}|
+{% endfor %}
+{% endif %}
 {% endblock %}

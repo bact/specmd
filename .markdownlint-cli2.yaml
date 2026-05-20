@@ -1,0 +1,9 @@
+# markdownlint-cli2 configuration for specmd project documentation
+
+config:
+  # MD013 — line length: tables and code blocks are exempt
+  # (Table cells and long URLs cannot be wrapped without breaking content.)
+  MD013:
+    line_length: 80
+    tables: false
+    code_blocks: false
