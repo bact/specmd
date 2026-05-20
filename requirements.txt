@@ -1,0 +1,5 @@
+# Runtime dependencies — kept in sync with pyproject.toml [project.dependencies]
+Jinja2>=3.1.6
+PyYAML>=6.0.3
+rdflib>=7.6.0
+rfc8785>=0.1.4
