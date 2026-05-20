@@ -54,6 +54,13 @@ def _check_input_path(p: str) -> Path:
     return path
 
 
+def _check_input_path_or_file(p: str) -> Path:
+    path = Path(p)
+    if not path.exists():
+        raise argparse.ArgumentTypeError(f"Input path '{path}' does not exist.")
+    return path
+
+
 class RunParams(SimpleNamespace):
     """Parsed runtime parameters for a specmd invocation."""
 
@@ -147,10 +154,20 @@ class RunParams(SimpleNamespace):
         # ── validate ──────────────────────────────────────────────────────
         val = sub.add_parser(
             "validate",
-            help="Validate a model directory without generating output.",
-            description="Parse and validate a Markdown model directory.",
+            help="Validate a model directory or a single .md file.",
+            description="Check raw YAML syntax and (for directories) fully parse the model.",
         )
-        _add_input_arg(val)
+        val.add_argument(
+            "input_dir",
+            metavar="INPUT",
+            type=_check_input_path_or_file,
+            help="Path to a model directory or a single .md file to validate.",
+        )
+        val.add_argument(
+            "--strict",
+            action="store_true",
+            help="Exit with an error if any raw YAML issues are found (not just warnings).",
+        )
         _add_log_args(val)
 
         # ── migrate ───────────────────────────────────────────────────────
@@ -204,6 +221,7 @@ class RunParams(SimpleNamespace):
             self._parse_generate(parsed)
         elif self.command == "validate":
             self.no_output: bool = True
+            self.strict: bool = getattr(parsed, "strict", False)
             for g in _ALL_FORMATS:
                 setattr(self, "generate_" + g, False)
         elif self.command == "migrate":

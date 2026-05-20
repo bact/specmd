@@ -14,10 +14,7 @@ readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.11"
 authors = [{ name = "Arthit Suriyawongkul", email = "suriyawa@tcd.ie" }]
-keywords = [
-    "specification",
-    "Markdown",
-]
+keywords = ["specification", "Markdown"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
@@ -31,7 +28,12 @@ classifiers = [
     "Topic :: Documentation",
     "Topic :: Text Processing :: Markup :: Markdown",
 ]
-dependencies = ["jinja2", "PyYAML", "rdflib", "rfc8785"]
+dependencies = [
+    "jinja2>=3.1.6",
+    "PyYAML>=6.0.3",
+    "rdflib>=7.6.0",
+    "rfc8785>=0.1.4",
+]
 
 [project.urls]
 Documentation = "https://github.com/bact/specmd#readme"

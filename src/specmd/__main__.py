@@ -12,6 +12,7 @@ from specmd._logging import LogCountingHandler, setup_logging
 from specmd._params import RunParams
 from specmd.commands.export import export_directory
 from specmd.commands.migrate import migrate_directory
+from specmd.commands.validate import validate_inplace, validate_yaml_sections
 from specmd.parse.model import Model
 
 
@@ -43,9 +44,65 @@ def main() -> None:
 
 
 def _cmd_validate(cfg: RunParams, root_logger: logging.Logger, handler: LogCountingHandler) -> None:
-    Model(cfg.input_path)
+    if cfg.input_path.is_file():
+        _cmd_validate_file(cfg, root_logger)
+    else:
+        _cmd_validate_directory(cfg, root_logger, handler)
+
+
+def _cmd_validate_file(cfg: RunParams, root_logger: logging.Logger) -> None:
+    """Validate a single .md file: raw YAML section check only."""
+    errors = validate_yaml_sections(cfg.input_path)
+    for section_name, msg in errors:
+        root_logger.warning("  [%s]: %s", section_name, msg)
+
+    issues = len(errors)
+    root_logger.info(
+        "Validation complete: 1 file checked, %d section issue(s) found.",
+        issues,
+    )
+    if issues and cfg.strict:
+        root_logger.error("Raw YAML issues found. Exiting (--strict).")
+        sys.exit(1)
+
+
+def _cmd_validate_directory(cfg: RunParams, root_logger: logging.Logger, handler: LogCountingHandler) -> None:
+    """Validate a model directory: raw YAML check then full semantic load."""
+    # Step 1: raw YAML syntax check (independent of the parser's safety net).
+    valid_files, invalid_files = validate_inplace(cfg.input_path)
+    total_files = valid_files + invalid_files
+
+    if invalid_files:
+        root_logger.warning(
+            "Raw YAML check: %d of %d file(s) have sections with unquoted YAML-unsafe "
+            "characters. Run 'specmd migrate' to fix them automatically.",
+            invalid_files,
+            total_files,
+        )
+
+    if invalid_files and cfg.strict:
+        root_logger.error("Raw YAML issues found. Exiting (--strict).")
+        root_logger.info(
+            "Validation complete: %d file(s) checked, %d file(s) with issues.",
+            total_files,
+            invalid_files,
+        )
+        sys.exit(1)
+
+    # Step 2: full semantic validation via model loading.
+    try:
+        Model(cfg.input_path)
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        root_logger.exception("Unexpected error loading the model: %s", exc)  # noqa: TRY401
+
     if _exit_on_errors(handler, root_logger, "Errors loading the model."):
         return
+
+    root_logger.info(
+        "Validation complete: %d file(s) checked, %d file(s) with issues.",
+        total_files,
+        invalid_files,
+    )
     root_logger.info("Model at '%s' is valid.", cfg.input_path)
 
 

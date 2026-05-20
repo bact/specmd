@@ -15,7 +15,10 @@ from __future__ import annotations
 import logging
 import re
 import shutil
+import textwrap
 from pathlib import Path
+
+import yaml
 
 logger = logging.getLogger(__name__)
 
@@ -49,10 +52,17 @@ RE_CONSTRAINED_CLASS = re.compile(
     re.IGNORECASE,
 )
 
+_RE_ENTRIES_BODY = re.compile(
+    r"^## Entries[ \t]*\n(.*?)(?=^##|\Z)",
+    re.MULTILINE | re.DOTALL,
+)
+
 NESTED_SECTIONS = {"Properties", "External properties restrictions"}
 METADATA_SECTIONS = {"Metadata"}
 ENTRIES_SECTIONS = {"Entries"}
 BACKTICK_SECTIONS = {"Format"}
+
+_MAX_LINE_LENGTH = 79
 
 _METADATA_RENAMES = {
     "subclassof": "subClassOf",
@@ -152,7 +162,35 @@ def _extract_rel_entry_fields(desc: str) -> dict[str, object]:
     return result
 
 
-def _migrate_lines(lines: list[str]) -> list[str] | None:
+_BLOCK_SCALAR_CHARS: frozenset[str] = frozenset("[{:")
+
+
+def _needs_block_scalar(full_line: str, desc: str) -> bool:
+    """Return True if *desc* should be emitted as a YAML ``>-`` block scalar.
+
+    Triggered when the full inline line exceeds 79 characters or when the
+    description contains characters that are unsafe in YAML plain scalars
+    (``[``, ``{``, or ``:``).
+    """
+    return len(full_line) > _MAX_LINE_LENGTH or bool(_BLOCK_SCALAR_CHARS & set(desc))
+
+
+def _wrap_as_block_scalar(desc: str, indent: str) -> list[str]:
+    """Wrap *desc* into ``>-`` block scalar lines, each within 79 characters.
+
+    *indent* is the whitespace prefix prepended to every content line.
+    Lines that cannot be broken (e.g. bare URLs) may exceed the limit.
+    """
+    width = _MAX_LINE_LENGTH - len(indent)
+    lines = textwrap.wrap(desc, width=width, break_long_words=False, break_on_hyphens=False)
+    if not lines:
+        lines = [desc]  # single non-breaking token; emit as-is
+    return [f"{indent}{line}\n" for line in lines]
+
+
+def _migrate_lines(  # pylint: disable=too-many-statements
+    lines: list[str],
+) -> list[str] | None:
     """Return migrated lines, or *None* if the file is already new-format."""
     if not lines:
         return None
@@ -260,7 +298,12 @@ def _migrate_lines(lines: list[str]) -> list[str] | None:
                 rel = _extract_rel_entry_fields(desc)
                 if rel:
                     result.append(f"{prefix}{name}:\n")
-                    result.append(f"  - description: {desc}\n")
+                    desc_inline = f"  - description: {desc}"
+                    if _needs_block_scalar(desc_inline, desc):
+                        result.append("  - description: >-\n")
+                        result.extend(_wrap_as_block_scalar(desc, "      "))
+                    else:
+                        result.append(f"{desc_inline}\n")
                     for field in ("from", "to", "relationshipClass"):
                         if field in rel:
                             val = rel[field]
@@ -271,6 +314,12 @@ def _migrate_lines(lines: list[str]) -> list[str] | None:
                                 result.append(f"  - {field}: {val[0]}\n")
                             else:
                                 result.append(f"  - {field}: {val}\n")
+                    continue
+                # Non-relationship entry: use >- if description is long or unsafe.
+                inline = f"{prefix}{name}: {desc}"
+                if _needs_block_scalar(inline, desc):
+                    result.append(f"{prefix}{name}: >-\n")
+                    result.extend(_wrap_as_block_scalar(desc, "    "))
                     continue
 
         result.append(line)
@@ -286,6 +335,19 @@ def _migrate_lines(lines: list[str]) -> list[str] | None:
 # ---------------------------------------------------------------------------
 
 
+def _warn_invalid_entries_yaml(path: Path, content: str) -> None:
+    """Log a warning for every Entries section in *content* that is not valid YAML."""
+    for m in _RE_ENTRIES_BODY.finditer(content):
+        body = m.group(1).strip()
+        if not body:
+            continue
+        try:
+            yaml.safe_load(body)
+        except yaml.YAMLError as exc:
+            msg = str(exc).replace("\n", " ").strip()
+            logger.warning("%s: migrated Entries section is not valid YAML: %s", path, msg)
+
+
 def migrate_file(path: Path) -> bool:
     """Migrate *path* in place. Returns ``True`` if the file was changed."""
     content = path.read_text(encoding="utf-8")
@@ -296,6 +358,7 @@ def migrate_file(path: Path) -> bool:
     new_content = "".join(new_lines)
     if new_content == content:
         return False
+    _warn_invalid_entries_yaml(path, new_content)
     path.write_text(new_content, encoding="utf-8")
     return True
 

@@ -26,6 +26,22 @@ Internal variable convention:
 
 Canonical reference: `docs/specmd.yml.example`.
 
+## CLI commands
+
+Four subcommands: `generate` (alias `gen`), `validate`, `migrate`, `export`.
+
+**`validate`** accepts a model directory OR a single `.md` file.
+- Directory: two passes — (1) raw YAML check (`yaml.safe_load` on `## Entries`
+  and `## Properties` sections), then (2) full `Model` load.
+- Single file: raw YAML check only (no `Model` loading).
+- `--strict`: exit non-zero if raw YAML issues found (default: warn only).
+- Always prints a summary line: `N file(s) checked, M file(s) with issues.`
+- Raw YAML check logic lives in `src/specmd/commands/validate.py`.
+  `Format` sections are excluded — they use specmd backtick syntax
+  (`- pattern: \`regex\``) which is not raw YAML.
+
+**`migrate`** also validates its own output after generating it (`_warn_invalid_entries_yaml`).
+
 ## CLI output
 
 - Unix philosophy: consistent, predictable, parseable.
