@@ -203,7 +203,7 @@ class TestOntologyConfig:
         assert any(isinstance(lic, URIRef) for lic in licenses)
 
     def test_custom_license(self, tmp_path: Path) -> None:
-        g, ont = self._graph(tmp_path, "ontology:\n  license: https://example.org/license\n")
+        g, ont = self._graph(tmp_path, "ontology:\n  license-uri: https://example.org/license\n")
         licenses = list(g.objects(ont, DCTERMS.license))
         assert URIRef("https://example.org/license") in licenses
 

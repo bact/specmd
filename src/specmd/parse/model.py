@@ -132,9 +132,10 @@ class Model:
 
             dp = inpath / d.name / "Vocabularies"
             if dp.is_dir():
-                default_rel_class: str = self.config.get("default-relationship-class", "Relationship")
-                default_from: list[str] = _parse_class_list_config(self.config.get("default-from"), ["Element"])
-                default_to: list[str] = _parse_class_list_config(self.config.get("default-to"), ["Element"])
+                vocabulary_cfg: dict = self.config.get("vocabulary", {})
+                default_relationship_class: str = vocabulary_cfg.get("default-relationship-class", "Relationship")
+                default_from: list[str] = _parse_class_list_config(vocabulary_cfg.get("default-from"), ["Element"])
+                default_to: list[str] = _parse_class_list_config(vocabulary_cfg.get("default-to"), ["Element"])
                 for f in [f for f in dp.iterdir() if f.is_file() and f.name[0].isupper() and f.name.endswith(".md")]:
                     n = Vocabulary(
                         f,
@@ -142,7 +143,7 @@ class Model:
                         defaults=VocabDefaults(
                             default_from=default_from,
                             default_to=default_to,
-                            default_relationship_class=default_rel_class,
+                            default_relationship_class=default_relationship_class,
                         ),
                     )
                     k = n.fqname
@@ -295,9 +296,9 @@ class Model:
         2. Heuristic from the Core namespace IRI (SPDX 3 backward compatibility).
         3. Longest common prefix of all namespace IRIs, with a warning.
         """
-        cfg_base: str | None = self.config.get("base-uri")
-        if cfg_base:
-            uri = cfg_base.rstrip("/") + "/"
+        cfg_base_uri: str | None = self.config.get("base-uri")
+        if cfg_base_uri:
+            uri = cfg_base_uri.rstrip("/") + "/"
             logger.debug("Base URI from config: %s", uri)
             return uri
         return self._derive_base_uri()

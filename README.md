@@ -3,6 +3,33 @@
 Convert Markdown model definitions to RDF ontologies
 and specification documents.
 
+## Contents
+
+- [Functionality](#functionality)
+- [Installation](#installation)
+- [Prerequisites](#prerequisites)
+- [Usage](#usage)
+  - [Validate](#validate)
+  - [Generate](#generate)
+  - [Migrate](#migrate)
+  - [Export](#export)
+  - [Common options](#common-options)
+- [Model configuration](#model-configuration)
+- [spec-parser compatibility](#spec-parser-compatibility)
+- [Testing](#testing)
+  - [shacl2code compatibility test](#shacl2code-compatibility-test)
+- [History](#history)
+- [RDF/OWL/SHACL design notes](#rdfowlshacl-design-notes)
+  - [Relationship to spec-parser-generated RDF](#relationship-to-spec-parser-generated-rdf)
+  - [JSON-LD context: `@type` for class-range properties](#json-ld-context-type-for-class-range-properties)
+  - [JSON-LD context: `@protected` on all terms](#json-ld-context-protected-on-all-terms)
+  - [JSON-LD context: compact vocabulary alias entries](#json-ld-context-compact-vocabulary-alias-entries)
+  - [Abstract class enforcement: SHACL + `owl:AllDisjointClasses`](#abstract-class-enforcement-shacl--owlalldisjointclasses)
+  - [Vocabulary property shapes: `sh:in` only](#vocabulary-property-shapes-shin-only)
+  - [`owl:versionIRI` distinct from ontology IRI](#owlversioniri-distinct-from-ontology-iri)
+  - [Base URI: explicit configuration, not derived](#base-uri-explicit-configuration-not-derived)
+  - [External annotation property declarations](#external-annotation-property-declarations)
+
 ## Functionality
 
 SpecMD always reads and validates the complete model directory.
@@ -23,6 +50,16 @@ It can then generate one or more of the following outputs:
 ```shell
 pip install specmd
 ```
+
+## Prerequisites
+
+All Python dependencies are installed automatically with `pip install specmd`.
+External tools required for specific formats:
+
+| Format | External prerequisite |
+| - | - |
+| `tex` | [pandoc](https://pandoc.org/) -- used to convert Markdown fragments to LaTeX |
+| All others | None |
 
 ## Usage
 
@@ -104,22 +141,26 @@ specmd generate --help
 
 ## Model configuration
 
-An optional `specmd.yml` file at the model root controls parsing and generation.
+An optional `specmd.yml` file at the model root controls parsing and
+generation.
+
 Key settings:
 
 ```yaml
-license: CC0-1.0           # license for generated output
+license: CC0-1.0           # SPDX license ID for generated output
 base-uri: https://example.org/rdf/terms/  # ontology base URI
 namespace-order: [Core]    # namespace processing order
-default-from: Element      # default vocab entry source class
-default-to: Element        # default vocab entry target class
-default-relationship-class: Relationship
 
 ontology:                  # OWL ontology metadata
   preferred-namespace-prefix: myns
   label: My Model Ontology
   creator: My Organisation
-  license: https://example.org/licenses/my-license/
+  license-uri: https://example.org/licenses/my-license/
+
+vocabulary:                # vocabulary / relationship defaults
+  default-from: Element    # default vocab entry source class
+  default-to: Element      # default vocab entry target class
+  default-relationship-class: Relationship
 
 rdf:
   filename: my-model       # output filename (no extension)
@@ -127,16 +168,6 @@ rdf:
 
 See [docs/format.md](docs/format.md#model-configuration-specmdyml) for
 the full reference.
-
-## Prerequisites
-
-All Python dependencies are installed automatically with `pip install specmd`.
-External tools required for specific formats:
-
-| Format | External prerequisite |
-| - | - |
-| `tex` | [pandoc](https://pandoc.org/) -- used to convert Markdown fragments to LaTeX |
-| All others | None |
 
 ## spec-parser compatibility
 
@@ -185,6 +216,45 @@ To:
       - run: |
           pip install -r spec-parser/requirements.txt
           python3 spec-parser/main.py --force --generate-mkdocs --output-mkdocs spdx-spec/docs/model spdx-3-model/model
+```
+
+## Testing
+
+Run the standard test suite:
+
+```bash
+pip install pytest
+pytest
+```
+
+### shacl2code compatibility test
+
+`tests/test_shacl2code.py` verifies that SpecMD RDF output produces
+**identical JSON schema** to upstream spec-parser when both are fed through
+[shacl2code]. This test is skipped automatically when either dependency is
+absent, so it will not block a plain `pytest` run.
+
+To run it, both tools must be reachable:
+
+```bash
+# 1. Install shacl2code
+pip install shacl2code
+
+# 2. Point PYTHONPATH at your spec-parser checkout
+#    (spec-parser cannot be pip-installed)
+PYTHONPATH=/path/to/spec-parser pytest tests/test_shacl2code.py -v
+```
+
+Example with a sibling checkout:
+
+```bash
+PYTHONPATH=../spec-parser pytest tests/test_shacl2code.py -v
+```
+
+Expected output:
+
+```text
+tests/test_shacl2code.py::TestShacl2codeCompatibility::test_jsonschema_identical PASSED
 ```
 
 ## History
@@ -273,9 +343,9 @@ The generated RDF differs from spec-parser output in several ways:
   spec-parser unconditionally emits `owl:versionIRI` as a self-reference
   (the ontology IRI pointing to itself) and never emits `owl:versionInfo`.
   SpecMD emits neither unless a version string is present in the model's
-  namespace metadata; when it is, both are emitted — `owl:versionInfo` as
-  the version string and `owl:versionIRI` as a distinct versioned IRI
-  (e.g. `<base-uri><version>/`), following W3C OWL 2 best practice.
+  namespace metadata; when it is, both are emitted -- `owl:versionInfo` as
+  the version string and `owl:versionIRI` as a distinct versioned IRI,
+  following W3C OWL 2 best practice.
 
 The `docs/format.md` and `docs/translation.md` documents are based on the
 documents of the same name in
@@ -351,7 +421,7 @@ Where the outputs intentionally differ (correctness fixes):
 - **`owl:versionIRI` / `owl:versionInfo`:** spec-parser unconditionally
   emits `owl:versionIRI` as a self-reference and never emits
   `owl:versionInfo`. SpecMD emits both only when a version string is
-  present — `owl:versionInfo` as the string, `owl:versionIRI` as a
+  present -- `owl:versionInfo` as the string, `owl:versionIRI` as a
   distinct versioned IRI.
 
 ### JSON-LD context: `@type` for class-range properties
@@ -402,8 +472,8 @@ The semantics are identical; the context file is significantly smaller.
 ### Abstract class enforcement: SHACL + `owl:AllDisjointClasses`
 
 **Background:** spec-parser enforces abstract classes with a SHACL
-constraint — `sh:not [ sh:hasValue <AbstractClass> ]` on
-`sh:path rdf:type` — but emits no OWL-level disjointness axiom for
+constraint -- `sh:not [ sh:hasValue <AbstractClass> ]` on
+`sh:path rdf:type` -- but emits no OWL-level disjointness axiom for
 sibling subclasses. An OWL reasoning tool therefore cannot detect when
 an individual is erroneously typed as two sibling subclasses at once.
 
@@ -431,6 +501,14 @@ and are IRIs by construction.
 dropping `sh:class` and `sh:nodeKind sh:IRI`. The validation outcome is
 identical; the shape is simpler and avoids redundant checks.
 
+**shacl2code compatibility:** Tools such as [shacl2code] that resolve
+property types via `sh:class` → `rdfs:range` fallback continue to work
+correctly. SpecMD sets `rdfs:range` on all property IRIs, so the fallback
+path produces the same class binding as the explicit `sh:class` triple.
+This is verified by an integration test that feeds the same model through
+both spec-parser and specmd (via `specmd migrate`) into shacl2code and
+asserts identical JSON schema output.
+
 ### `owl:versionIRI` distinct from ontology IRI
 
 **Problem:** spec-parser unconditionally emits `owl:versionIRI` set to
@@ -438,16 +516,20 @@ the ontology IRI itself (a self-reference), and never emits
 `owl:versionInfo`. The self-referential IRI carries no version
 information — it is the same regardless of which version of the model
 is being published — and the [W3C OWL 2 specification][owl2-syntax]
-states the version IRI "should be a different IRI from the ontology
-IRI." Tools that dereference `owl:versionIRI` to retrieve a specific
-historical snapshot will simply retrieve the current version.
+notes that a self-referential version IRI conveys no version
+information — it is the same regardless of which version of the model
+is being published. Tools that dereference `owl:versionIRI` to retrieve
+a specific historical snapshot will simply retrieve the current version.
 
 **Decision:** Neither `owl:versionIRI` nor `owl:versionInfo` is emitted
 unless a version string is present in the model's namespace metadata.
 When present, both are emitted: `owl:versionInfo` carries the version
-string, and `owl:versionIRI` is constructed as `<base-uri><version>/`
-(e.g., `https://example.org/rdf/terms/3.0.1/`), giving each release a
-distinct IRI while leaving the ontology IRI stable across versions.
+string, and `owl:versionIRI` is a distinct sibling IRI. When the major
+version appears as a path segment in the base URI, it is replaced by the
+full version string (e.g., `https://spdx.org/rdf/3/terms/` + `3.1` →
+`https://spdx.org/rdf/3.1/terms/`); otherwise the version is appended
+as a sub-path. Either way each release gets a distinct IRI while the
+ontology IRI stays stable across minor versions.
 
 **Reference:** [W3C OWL 2 Structural Specification §3.1][owl2-syntax]
 
@@ -483,4 +565,5 @@ without requiring `owl:imports` directives.
 [spdx/spec-parser#206]: https://github.com/spdx/spec-parser/pull/206
 [spdx/spdx-spec#1312]: https://github.com/spdx/spdx-spec/issues/1312
 [spdx/spdx-3-model#1167]: https://github.com/spdx/spdx-3-model/issues/1167
-[owl2-syntax]: https://www.w3.org/TR/owl2-syntax/#Ontology_Documents
+[owl2-syntax]: https://www.w3.org/TR/owl2-syntax/#Ontology_IRI_and_Version_IRI
+[shacl2code]: https://github.com/bact/shacl2code

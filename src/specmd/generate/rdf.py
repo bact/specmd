@@ -48,7 +48,7 @@ def _md_to_text(md: str | None) -> str:
 
 
 # ---------------------------------------------------------------------------
-# XSD range resolution
+# Helpers
 # ---------------------------------------------------------------------------
 
 
@@ -127,7 +127,7 @@ _ONT_DEFAULTS: dict[str, str] = {
     "title": "System Package Data Exchange (SPDX) Ontology",
     "abstract": "This ontology defines the terms and relationships used in the SPDX specification to describe system packages",
     "creator": "SPDX Project",
-    "license": "https://spdx.org/licenses/Community-Spec-1.0.html",
+    "license-uri": "https://spdx.org/licenses/Community-Spec-1.0.html",
     "references": "https://spdx.dev/specifications/",
     "copyright": "Copyright (C) SPDX Project",
 }
@@ -144,9 +144,9 @@ def gen_rdf_ontology(model: Model) -> Graph:
     g = Graph()
 
     uri_base = model.base_uri
-    ont = _ont_cfg(model)
+    ontology_cfg = _ont_cfg(model)
 
-    g.bind(ont["preferred-namespace-prefix"], Namespace(uri_base))
+    g.bind(ontology_cfg["preferred-namespace-prefix"], Namespace(uri_base))
 
     # Per-namespace prefix bindings with VANN annotations.
     for ns in model.namespaces:
@@ -195,29 +195,39 @@ def gen_rdf_ontology(model: Model) -> Graph:
     g.add((ont_node, RDF.type, OWL.Ontology))
 
     # owl:versionInfo / owl:versionIRI from namespace metadata.
-    # versionIRI is a distinct versioned URI (<base-uri><version>/), not the ontology IRI.
-    version_str: str | None = None
+    # W3C OWL 2 §3.1 permits the version IRI to equal the ontology IRI, but
+    # a self-referential version IRI conveys no version information and makes
+    # it impossible to distinguish releases by IRI. We therefore emit
+    # owl:versionIRI only when a version string is present, constructing a
+    # distinct versioned IRI that identifies the specific release.
+    # https://www.w3.org/TR/owl2-syntax/#Ontology_IRI_and_Version_IRI
     for ns in model.namespaces:
         v = ns.metadata.get("version") or ns.metadata.get("Version")
         if v:
-            version_str = v
+            g.add((ont_node, OWL.versionInfo, Literal(v)))
+            # If the major version appears as a path segment (e.g. /3/ in SPDX IRIs),
+            # replace it with the full version to get a stable sibling IRI
+            # (https://spdx.org/rdf/3/terms/ → https://spdx.org/rdf/3.1/terms/).
+            # Otherwise append the version as a sub-path (generic fallback).
+            major = v.split(".")[0]
+            if f"/{major}/" in uri_base:
+                versioned_iri = URIRef(uri_base.replace(f"/{major}/", f"/{v}/", 1))
+            else:
+                versioned_iri = URIRef(uri_base.rstrip("/") + "/" + v + "/")
+            g.add((ont_node, OWL.versionIRI, versioned_iri))
             break
-    if version_str:
-        g.add((ont_node, OWL.versionInfo, Literal(version_str)))
-        versioned_iri = URIRef(uri_base.rstrip("/") + "/" + version_str + "/")
-        g.add((ont_node, OWL.versionIRI, versioned_iri))
 
     # vann:preferredNamespacePrefix / vann:preferredNamespaceUri (W3C BCP for vocab publishing).
-    g.add((ont_node, VANN.preferredNamespacePrefix, Literal(ont["preferred-namespace-prefix"])))
+    g.add((ont_node, VANN.preferredNamespacePrefix, Literal(ontology_cfg["preferred-namespace-prefix"])))
     g.add((ont_node, VANN.preferredNamespaceUri, Literal(uri_base)))
 
-    g.add((ont_node, RDFS.label, Literal(ont["label"], lang="en")))
-    g.add((ont_node, DCTERMS.abstract, Literal(ont["abstract"], lang="en")))
-    g.add((ont_node, DCTERMS.creator, Literal(ont["creator"], lang="en")))
-    g.add((ont_node, DCTERMS.license, URIRef(ont["license"])))
-    g.add((ont_node, DCTERMS.references, URIRef(ont["references"])))
-    g.add((ont_node, DCTERMS.title, Literal(ont["title"], lang="en")))
-    g.add((ont_node, OMG_ANN.copyright, Literal(ont["copyright"], lang="en")))
+    g.add((ont_node, RDFS.label, Literal(ontology_cfg["label"], lang="en")))
+    g.add((ont_node, DCTERMS.abstract, Literal(ontology_cfg["abstract"], lang="en")))
+    g.add((ont_node, DCTERMS.creator, Literal(ontology_cfg["creator"], lang="en")))
+    g.add((ont_node, DCTERMS.license, URIRef(ontology_cfg["license-uri"])))
+    g.add((ont_node, DCTERMS.references, URIRef(ontology_cfg["references"])))
+    g.add((ont_node, DCTERMS.title, Literal(ontology_cfg["title"], lang="en")))
+    g.add((ont_node, OMG_ANN.copyright, Literal(ontology_cfg["copyright"], lang="en")))
 
     _gen_classes(model, g)
     _gen_properties(model, g)

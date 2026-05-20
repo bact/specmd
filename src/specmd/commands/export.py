@@ -32,7 +32,6 @@ RE_FRONTMATTER = re.compile(r"\A---[ \t]*\r?\n(.*?)\r?\n---[ \t]*\r?\n?", re.DOT
 RE_SPDX_IN_FM = re.compile(r"^SPDX-License-Identifier:\s+(.+?)\s*$", re.MULTILINE)
 RE_RANGE_LINE = re.compile(r"^-\s+range:\s+(.+?)\s*$", re.MULTILINE | re.IGNORECASE)
 RE_SECTION_HEADER = re.compile(r"^## (.+)$")
-RE_NESTED_TOP_NEW = re.compile(r"^(-\s+)([\w/]+):\s*$")
 RE_QUOTED_STAR = re.compile(r'^(  -\s+\w+:\s+)"(\*)"(\s*)$')
 RE_BACKTICK_KV = re.compile(r"^(-\s+\w[\w-]*:\s+)(``|`)(.+?)\2\s*$")
 RE_META_KV = re.compile(r"^(-\s+)(\w+)(\s*:\s*)(.*)$")
@@ -40,14 +39,22 @@ RE_DEPRECATED_NOTICE = re.compile(
     r"^\*\*DEPRECATED(?:\s+in\s+(?:SPDX\s+)?([\d.]+(?:\.\d+)*))?\.\*\*\s*$",
     re.IGNORECASE,
 )
-RE_USE_INSTEAD = re.compile(
-    r"^Use\s+\[([^\]]+)\]\([^)]+\)\s+instead\.\s*$",
-    re.IGNORECASE,
-)
+# Matches "- name:" with no inline value — used for both nested property tops and rich vocab entries.
+RE_ITEM_HEADER = re.compile(r"^(-\s+)([\w/]+):\s*$")
+RE_ENTRY_DESC = re.compile(r"^  -\s+description:\s+(.+)$")  # "  - description: ..." sub-key
 
 NESTED_SECTIONS = {"Properties", "External properties restrictions"}
 FORMAT_SECTIONS = {"Format"}
 METADATA_SECTIONS = {"Metadata"}
+ENTRIES_SECTIONS = {"Entries"}
+
+# Keys renamed back to spec-parser Title Case on export.
+_RENAMES_BACK: dict[str, str] = {
+    "subclassof": "SubclassOf",
+    "nature": "Nature",
+    "range": "Range",
+    "iri": "IRI",
+}
 
 # ---------------------------------------------------------------------------
 # Internal helpers
@@ -102,7 +109,7 @@ def _build_range_map(root: Path) -> dict[str, str]:
     return range_map
 
 
-def _revert_lines(content: str, ns_name: str, range_map: dict[str, str]) -> str | None:
+def _revert_lines(content: str, ns_name: str, range_map: dict[str, str], *, is_class: bool = False) -> str | None:
     """Return reverted content, or *None* if already old-format or unchanged."""
     fm_match = RE_FRONTMATTER.match(content)
     if not fm_match:
@@ -124,9 +131,11 @@ def _revert_lines(content: str, ns_name: str, range_map: dict[str, str]) -> str 
     current_section: str | None = None
     meta_saw_abstract: bool = False
     depr_inject_pending: bool = False
+    _pending_entry: str | None = None  # rich Entries: "- entryName:" awaiting description
 
     def _flush_metadata_defaults() -> None:
-        if current_section in METADATA_SECTIONS and not meta_saw_abstract:
+        # Instantiability is only a valid Class metadata key in spec-parser.
+        if current_section in METADATA_SECTIONS and is_class and not meta_saw_abstract:
             result.append("- Instantiability: Concrete\n")
 
     for line in body.splitlines(keepends=True):
@@ -142,27 +151,21 @@ def _revert_lines(content: str, ns_name: str, range_map: dict[str, str]) -> str 
             continue
 
         if depr_inject_pending and current_section == "Description" and stripped:
-            ver_part = f" in SPDX {depr_ver}" if depr_ver else ""
-            result.append(f"**DEPRECATED{ver_part}.**\n")
+            result.append(f"**DEPRECATED{f' in SPDX {depr_ver}' if depr_ver else ''}.**\n")
             if repl_by:
                 result.append(f"Use [{repl_by}]({repl_by}) instead.\n")
             result.append("\n")
             depr_inject_pending = False
 
         if current_section in METADATA_SECTIONS:
+            if not stripped:
+                continue  # blank lines inside Metadata break spec-parser's list parser
             m_meta = RE_META_KV.match(stripped)
             if m_meta:
-                key = m_meta.group(2)
                 value = m_meta.group(4).strip()
-                kl = key.lower()
-                renames_back = {
-                    "subclassof": "SubclassOf",
-                    "nature": "Nature",
-                    "range": "Range",
-                    "iri": "IRI",
-                }
-                if kl in renames_back:
-                    result.append(f"{m_meta.group(1)}{renames_back[kl]}{m_meta.group(3)}{value}\n")
+                kl = m_meta.group(2).lower()
+                if kl in _RENAMES_BACK:
+                    result.append(f"{m_meta.group(1)}{_RENAMES_BACK[kl]}{m_meta.group(3)}{value}\n")
                     continue
                 if kl == "abstract":
                     meta_saw_abstract = True
@@ -176,7 +179,7 @@ def _revert_lines(content: str, ns_name: str, range_map: dict[str, str]) -> str 
             if m_star:
                 result.append(f"{m_star.group(1)}*\n")
                 continue
-            m_top = RE_NESTED_TOP_NEW.match(stripped)
+            m_top = RE_ITEM_HEADER.match(stripped)
             if m_top:
                 prop_name = m_top.group(2)
                 result.append(f"{m_top.group(1)}{prop_name}\n")
@@ -188,6 +191,25 @@ def _revert_lines(content: str, ns_name: str, range_map: dict[str, str]) -> str 
                     matches = [r for k, r in range_map.items() if k.endswith(f"/{prop_name}")]
                     if len(matches) == 1:
                         result.append(f"  - type: {matches[0]}\n")
+                continue
+
+        if current_section in ENTRIES_SECTIONS:
+            if not stripped:
+                _pending_entry = None
+                result.append(line)
+                continue
+            m_rich = RE_ITEM_HEADER.match(stripped)
+            if m_rich:
+                # Rich entry header "- entryName:" with no inline description.
+                # Defer output until we find the description sub-key.
+                _pending_entry = m_rich.group(2)
+                continue
+            if _pending_entry is not None:
+                m_desc = RE_ENTRY_DESC.match(stripped)
+                if m_desc:
+                    result.append(f"- {_pending_entry}: {m_desc.group(1)}\n")
+                    _pending_entry = None
+                # Skip all other sub-lines (from, to, relationshipClass, etc.)
                 continue
 
         if current_section in FORMAT_SECTIONS:
@@ -211,7 +233,8 @@ def export_file(path: Path, range_map: dict[str, str]) -> bool:
     """Export *path* to legacy format in place. Returns ``True`` if changed."""
     content = path.read_text(encoding="utf-8")
     ns_name = path.parent.name if path.parent.name[0].isupper() else path.parent.parent.name
-    new_content = _revert_lines(content, ns_name, range_map)
+    is_class = path.parent.name == "Classes"
+    new_content = _revert_lines(content, ns_name, range_map, is_class=is_class)
     if new_content is None or new_content == content:
         return False
     path.write_text(new_content, encoding="utf-8")

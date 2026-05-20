@@ -59,20 +59,21 @@ license: Community-Spec-1.0
 # Vocabulary defaults
 # ---------------------------------------------------------------------------
 
-# Default OWL class used as the ``relationshipClass`` for vocabulary entries
-# in relationship-type vocabularies when the entry does not specify one explicitly.
-# For SPDX 3, this is "Relationship".
-# Default: Relationship
-default-relationship-class: Relationship
+vocabulary:
+  # Default OWL class used as the ``relationshipClass`` for vocabulary entries
+  # in relationship-type vocabularies when the entry does not specify one explicitly.
+  # For SPDX 3, this is "Relationship".
+  # Default: Relationship
+  default-relationship-class: Relationship
 
-# Default source class(es) for the ``from`` field when an entry omits it.
-# Accepts a YAML list or a comma-separated string.
-# Default: Element
-default-from: Element
+  # Default source class(es) for the ``from`` field when an entry omits it.
+  # Accepts a YAML list or a comma-separated string.
+  # Default: Element
+  default-from: Element
 
-# Default target class(es) for the ``to`` field when an entry omits it.
-# Default: Element
-default-to: Element
+  # Default target class(es) for the ``to`` field when an entry omits it.
+  # Default: Element
+  default-to: Element
 
 # ---------------------------------------------------------------------------
 # Ontology metadata  (used by the RDF / OWL generator)
@@ -98,7 +99,7 @@ ontology:
   creator: "SPDX Project"
 
   # dcterms:license -- URI of the licence that governs the ontology itself.
-  license: "https://spdx.org/licenses/Community-Spec-1.0.html"
+  license-uri: "https://spdx.org/licenses/Community-Spec-1.0.html"
 
   # dcterms:references -- URI of the normative specification.
   references: "https://spdx.dev/specifications/"

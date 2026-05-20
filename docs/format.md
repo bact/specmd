@@ -522,20 +522,21 @@ Structured entry fields:
 
 The defaults for `from`, `to`, and `relationshipClass` apply across all
 relationship-type vocabularies in the model. They may be overridden in
-`specmd.yml` (at the model root):
+`specmd.yml` (at the model root) under the `vocabulary:` block:
 
 | `specmd.yml` key | Default | Description |
 | - | - | - |
-| `default-from` | `Element` | Default source class when `from` is omitted. |
-| `default-to` | `Element` | Default target class when `to` is omitted. |
-| `default-relationship-class` | `Relationship` | Default OWL class when `relationshipClass` is omitted. |
+| `vocabulary.default-from` | `Element` | Default source class when `from` is omitted. |
+| `vocabulary.default-to` | `Element` | Default target class when `to` is omitted. |
+| `vocabulary.default-relationship-class` | `Relationship` | Default OWL class when `relationshipClass` is omitted. |
 
 Example `specmd.yml` fragment:
 
 ```yaml
-default-from: Element
-default-to: Element
-default-relationship-class: Relationship
+vocabulary:
+  default-from: Element
+  default-to: Element
+  default-relationship-class: Relationship
 ```
 
 **`from` and `to` syntax:**
@@ -692,9 +693,10 @@ namespace-order:
 include-unlisted-namespaces: false
 
 # Defaults for relationship-type vocabulary entries (see Vocabularies section).
-default-from: Element
-default-to: Element
-default-relationship-class: Relationship
+vocabulary:
+  default-from: Element
+  default-to: Element
+  default-relationship-class: Relationship
 
 # PlantUML diagram settings.
 plantuml:
@@ -713,7 +715,7 @@ ontology:
   title: My Model Ontology
   abstract: This ontology defines terms for my model.
   creator: My Organisation
-  license: https://creativecommons.org/publicdomain/zero/1.0/
+  license-uri: https://creativecommons.org/publicdomain/zero/1.0/
   references: https://example.org/my-model/
   copyright: Copyright (C) My Organisation
 ```
@@ -724,12 +726,18 @@ ontology:
 | `base-uri` | string (URI) | *(derived from model)* | Ontology base URI. Recommended for non-SPDX models. |
 | `namespace-order` | list | *(alphabetical)* | Ordered namespace list; unlisted are excluded. |
 | `include-unlisted-namespaces` | bool | `false` | Include namespaces absent from `namespace-order`. |
-| `default-from` | string or list | `Element` | Default `from` class for vocab entries. |
-| `default-to` | string or list | `Element` | Default `to` class for vocab entries. |
-| `default-relationship-class` | string | `Relationship` | Default OWL class for vocab entries. |
+| `vocabulary` | mapping | -- | Vocabulary / relationship defaults (see below). |
 | `plantuml` | mapping | -- | PlantUML diagram settings (see below). |
 | `rdf` | mapping | -- | RDF output filename settings (see below). |
 | `ontology` | mapping | -- | OWL ontology metadata (see below). |
+
+**`vocabulary` keys:**
+
+| Key | Default | Description |
+| - | - | - |
+| `default-from` | `Element` | Default `from` class for vocab entries. |
+| `default-to` | `Element` | Default `to` class for vocab entries. |
+| `default-relationship-class` | `Relationship` | Default OWL class for vocab entries. |
 
 **`plantuml` keys:**
 
@@ -754,7 +762,7 @@ ontology:
 | `title` | *(SPDX title)* | `dcterms:title`. |
 | `abstract` | *(SPDX abstract)* | `dcterms:abstract`. |
 | `creator` | `SPDX Project` | `dcterms:creator`. |
-| `license` | *(SPDX license URI)* | `dcterms:license` (URI). |
+| `license-uri` | *(SPDX license URI)* | `dcterms:license` (URI). |
 | `references` | *(SPDX references URI)* | `dcterms:references` (URI). |
 | `copyright` | *(SPDX copyright)* | `omg_ann:copyright`. |
 
@@ -762,7 +770,7 @@ ontology:
 
 When a specification document uses normative language, verbal forms should be
 chosen consistently to signal the level of requirement. A common convention,
-used by ISO/IEC standards and IETF RFCs, is:
+used by ISO/IEC standards is:
 
 | Verbal forms          | Type of provision                                                                   |
 | --------------------- | ----------------------------------------------------------------------------------- |
@@ -776,10 +784,21 @@ Equivalent phrases or expressions may be used in certain cases,
 provided they maintain the exact meaning and level of normativity established
 by these verbal forms.
 
-> **SPDX 3 model:** The SPDX 3 specification follows *ISO/IEC Directives,
-> Part 2 -- Principles and rules for the structure and drafting of ISO and
-> IEC documents*. Use the verbal forms in the table above exactly as defined
-> there.
+> **SPDX 3 model:**
+> The SPDX 3 specification adheres to the
+> *[ISO/IEC Directives, Part 2 — Principles and rules for the structure and
+> drafting of ISO and IEC documents][iso-part2]*.
+> You must use the verbal forms specified in the table above exactly as
+> defined in the directive.
+>
+> **IETF and W3C Drafts and Proposals:**
+> Internet and web drafts and proposals generally follow
+> *[RFC 2119 - Key words for use in RFCs to Indicate Requirement Levels][rfc2119]*,
+> which is maintained as part of [BCP 14][bcp14].
+
+[iso-part2]: https://www.iso.org/resources/publicly-available-resources.html?t=2GjwAG0y1pTGaWMLrFyd8JcnY2jv_ZM8-53tGT1-6f5uPDmC2DinHt5OHGv4uZf7&view=documents#section-isodocuments-top
+[rfc2119]: https://datatracker.ietf.org/doc/rfc2119/
+[bcp14]: https://datatracker.ietf.org/doc/bcp14/
 
 ## Writing style
 

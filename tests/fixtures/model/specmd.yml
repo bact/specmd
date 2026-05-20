@@ -14,7 +14,7 @@ ontology:
   title: Core Fixture Ontology
   abstract: Test fixture ontology for SpecMD.
   creator: SpecMD Test Suite
-  license: https://creativecommons.org/publicdomain/zero/1.0/
+  license-uri: https://creativecommons.org/publicdomain/zero/1.0/
   references: https://github.com/bact/specmd/
   copyright: Copyright (C) SpecMD Contributors
 
