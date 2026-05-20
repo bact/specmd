@@ -44,8 +44,11 @@ pytest.importorskip("shacl2code", reason="shacl2code not installed")
 
 def _rdf_via_spec_parser(model_path: Path) -> Graph:
     """Load old-format model with upstream spec_parser and return the rdflib Graph."""
-    from spec_parser.model import Model as SpModel  # type: ignore[import-not-found]  # pylint: disable=import-error
-    from spec_parser.rdf import gen_rdf_ontology as sp_gen  # type: ignore[import-not-found]  # pylint: disable=import-error
+    # type: ignore[import-not-found]  # pylint: disable=import-error
+    from spec_parser.model import Model as SpModel
+
+    # type: ignore[import-not-found]  # pylint: disable=import-error
+    from spec_parser.rdf import gen_rdf_ontology as sp_gen
 
     m = SpModel(model_path)
     return sp_gen(m)
@@ -69,7 +72,17 @@ def _jsonschema_from_graph(g: Graph, tmp: Path, name: str) -> dict:
     schema = tmp / f"{name}.json"
     g.serialize(str(ttl), format="ttl")
     result = subprocess.run(  # noqa: S603 — argv is fully controlled, no user input
-        [sys.executable, "-m", "shacl2code", "generate", "-i", str(ttl), "jsonschema", "-o", str(schema)],
+        [
+            sys.executable,
+            "-m",
+            "shacl2code",
+            "generate",
+            "-i",
+            str(ttl),
+            "jsonschema",
+            "-o",
+            str(schema),
+        ],
         capture_output=True,
         text=True,
         check=False,
@@ -85,7 +98,8 @@ def _jsonschema_from_graph(g: Graph, tmp: Path, name: str) -> dict:
 
 class TestShacl2codeCompatibility:
     def test_jsonschema_identical(self) -> None:
-        """specmd (via migrate) and spec-parser produce identical shacl2code JSON schema."""
+        """specmd (via migrate) and spec-parser produce identical
+        shacl2code JSON schema."""
         with tempfile.TemporaryDirectory() as tmp_str:
             tmp = Path(tmp_str)
             sp_graph = _rdf_via_spec_parser(FIXTURE_OLD_FORMAT)
@@ -98,6 +112,8 @@ class TestShacl2codeCompatibility:
             schema.pop("$comment", None)
 
         assert sp_schema == sm_schema, (
-            "shacl2code JSON schema differs between spec-parser and specmd output.\n"
-            "This indicates a SHACL shape incompatibility in specmd's RDF generation."
+            "shacl2code JSON schema differs between spec-parser and specmd "
+            "output.\n"
+            "This indicates a SHACL shape incompatibility in specmd's RDF "
+            "generation."
         )

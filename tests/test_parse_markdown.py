@@ -427,6 +427,150 @@ class TestVocabularySection:
         assert s.entries["fancy"]["relationshipClass"] == "FancyRelationship"
 
 
+class TestVocabSpecialCharDescriptions:
+    """Descriptions containing YAML-unsafe characters must parse without error."""
+
+    def test_colon_space_in_description(self) -> None:
+        # ': ' mid-value triggers YAML "mapping values are not allowed here"
+        # unless auto-quoted by the safety net.
+        s = VocabularySection("- sha256: SHA-256 as defined in NIST FIPS 180-4: Secure Hash Standard.\n")
+        assert s.entries["sha256"]["description"] == "SHA-256 as defined in NIST FIPS 180-4: Secure Hash Standard."
+
+    def test_markdown_link_in_description(self) -> None:
+        # '[' starts a YAML flow sequence when unquoted.
+        s = VocabularySection("- blake3: [BLAKE3](https://github.com/BLAKE3-team/BLAKE3) hash algorithm.\n")
+        assert s.entries["blake3"]["description"] == "[BLAKE3](https://github.com/BLAKE3-team/BLAKE3) hash algorithm."
+
+    def test_curly_brace_in_description(self) -> None:
+        # '{' starts a YAML flow mapping when unquoted.
+        s = VocabularySection("- sha3: SHA3 variant {256} as standardized by NIST in FIPS 202.\n")
+        assert s.entries["sha3"]["description"] == "SHA3 variant {256} as standardized by NIST in FIPS 202."
+
+    def test_block_scalar_description_in_simple_entry(self) -> None:
+        # >- block scalar in a simple entry (migrated form) parses cleanly.
+        content = dedent("""\
+            - blake3: >-
+                [BLAKE3](https://github.com/BLAKE3-team/BLAKE3) hash algorithm.
+        """)
+        s = VocabularySection(content)
+        assert s.entries["blake3"]["description"] == "[BLAKE3](https://github.com/BLAKE3-team/BLAKE3) hash algorithm."
+
+    def test_block_scalar_description_in_structured_entry(self) -> None:
+        # >- on the description field of a structured entry parses cleanly.
+        content = dedent("""\
+            - sha256:
+              - description: >-
+                  SHA-256 as defined in NIST FIPS 180-4: Secure Hash Standard (SHS).
+              - from: Element
+              - to: Element
+        """)
+        s = VocabularySection(content)
+        assert s.entries["sha256"]["description"] == "SHA-256 as defined in NIST FIPS 180-4: Secure Hash Standard (SHS)."
+
+    def test_colon_in_structured_entry_description(self) -> None:
+        # Inline value with ': ' inside a structured entry description.
+        content = dedent("""\
+            - sha256:
+              - description: SHA-256 as defined in NIST FIPS 180-4: Secure Hash Standard.
+              - from: Element
+        """)
+        s = VocabularySection(content)
+        assert s.entries["sha256"]["description"] == "SHA-256 as defined in NIST FIPS 180-4: Secure Hash Standard."
+
+    def test_multiple_special_chars_in_same_section(self) -> None:
+        # Mixed entries: plain, markdown-link, colon, and curly-brace — all in one block.
+        content = dedent("""\
+            - md5: MD5 hash algorithm.
+            - blake3: [BLAKE3](https://github.com/BLAKE3-team/BLAKE3) hash algorithm.
+            - sha256: SHA-256 as defined in NIST FIPS 180-4: Secure Hash Standard (SHS).
+            - sha3: SHA3 variant {256} as standardized by NIST in FIPS 202.
+        """)
+        s = VocabularySection(content)
+        assert s.entries["md5"]["description"] == "MD5 hash algorithm."
+        assert "[BLAKE3]" in str(s.entries["blake3"]["description"])
+        assert "180-4:" in str(s.entries["sha256"]["description"])
+        assert "{256}" in str(s.entries["sha3"]["description"])
+
+    # ---- newline handling ----
+
+    def test_block_scalar_strip_folds_internal_newlines_to_spaces(self) -> None:
+        # >- folds the newline between content lines into a single space.
+        content = dedent("""\
+            - sha512: >-
+                SHA-512 as defined in NIST FIPS 180-4: Secure Hash Standard (SHS). Produces
+                a 512-bit hash value.
+        """)
+        s = VocabularySection(content)
+        desc = s.entries["sha512"]["description"]
+        assert isinstance(desc, str)
+        assert "\n" not in desc
+        assert desc == ("SHA-512 as defined in NIST FIPS 180-4: Secure Hash Standard (SHS). Produces a 512-bit hash value.")
+
+    def test_block_scalar_strip_removes_trailing_newline(self) -> None:
+        # >- strips the trailing newline; description must not end with \n.
+        content = "- sha256: >-\n    SHA-256 hash.\n"
+        s = VocabularySection(content)
+        assert not str(s.entries["sha256"]["description"]).endswith("\n")
+        assert s.entries["sha256"]["description"] == "SHA-256 hash."
+
+    def test_block_scalar_no_strip_keeps_trailing_newline(self) -> None:
+        # > (no strip) keeps the trailing newline.  VocabularySection stores it
+        # verbatim — callers that care should use >- in source files.
+        content = "- sha256: >\n    SHA-256 hash.\n"
+        s = VocabularySection(content)
+        assert str(s.entries["sha256"]["description"]).endswith("\n")
+
+    # ---- single-quote escaping ----
+
+    def test_single_quote_alone_no_auto_quoting(self) -> None:
+        # A lone apostrophe is valid in a YAML plain scalar; no quoting triggered.
+        s = VocabularySection("- entry: It's a plain description.\n")
+        assert s.entries["entry"]["description"] == "It's a plain description."
+
+    def test_single_quote_with_bracket_escaped(self) -> None:
+        # When [ also appears, auto-quoting wraps in single quotes and '' escapes '.
+        s = VocabularySection("- entry: It's [useful]: see spec.\n")
+        assert s.entries["entry"]["description"] == "It's [useful]: see spec."
+
+
+class TestVocabFixtureFile:
+    """Load HashAlgorithm.md fixture and confirm special-char descriptions parse correctly."""
+
+    def test_fixture_file_loads(self, fixture_model_path: Path) -> None:
+        sf = SpecFile(fixture_model_path / "Core" / "Vocabularies" / "HashAlgorithm.md")
+        assert sf.name == "HashAlgorithm"
+        assert "Entries" in sf.sections
+
+    def test_plain_entry_description(self, fixture_model_path: Path) -> None:
+        sf = SpecFile(fixture_model_path / "Core" / "Vocabularies" / "HashAlgorithm.md")
+        vocab = VocabularySection(sf.sections["Entries"])
+        assert vocab.entries["md5"]["description"] == "MD5 hash algorithm."
+
+    def test_markdown_link_entry_description(self, fixture_model_path: Path) -> None:
+        sf = SpecFile(fixture_model_path / "Core" / "Vocabularies" / "HashAlgorithm.md")
+        vocab = VocabularySection(sf.sections["Entries"])
+        assert vocab.entries["blake3"]["description"] == "[BLAKE3](https://github.com/BLAKE3-team/BLAKE3) hash algorithm."
+
+    def test_colon_entry_description(self, fixture_model_path: Path) -> None:
+        sf = SpecFile(fixture_model_path / "Core" / "Vocabularies" / "HashAlgorithm.md")
+        vocab = VocabularySection(sf.sections["Entries"])
+        assert vocab.entries["sha256"]["description"] == "SHA-256 as defined in NIST FIPS 180-4: Secure Hash Standard (SHS)."
+
+    def test_curly_brace_entry_description(self, fixture_model_path: Path) -> None:
+        sf = SpecFile(fixture_model_path / "Core" / "Vocabularies" / "HashAlgorithm.md")
+        vocab = VocabularySection(sf.sections["Entries"])
+        assert vocab.entries["sha3"]["description"] == "SHA3 variant {256} as standardized by NIST in FIPS 202."
+
+    def test_multiline_block_scalar_folded(self, fixture_model_path: Path) -> None:
+        # sha512 uses a two-line >- block; must fold to a single string without \n.
+        sf = SpecFile(fixture_model_path / "Core" / "Vocabularies" / "HashAlgorithm.md")
+        vocab = VocabularySection(sf.sections["Entries"])
+        desc = vocab.entries["sha512"]["description"]
+        assert isinstance(desc, str)
+        assert "\n" not in desc
+        assert desc == ("SHA-512 as defined in NIST FIPS 180-4: Secure Hash Standard (SHS). Produces a 512-bit hash value.")
+
+
 class TestSplitClassList:
     def test_simple_single(self) -> None:
         assert _split_class_list("Element") == ["Element"]

@@ -24,7 +24,7 @@ class TestModelLoading:
         assert len(model.properties) == 4
 
     def test_vocabulary_count(self, model: Model) -> None:
-        assert len(model.vocabularies) == 2
+        assert len(model.vocabularies) == 3
 
     def test_simple_vocab_is_not_relationship_vocab(self, model: Model) -> None:
         vocab = model.vocabularies["/Core/SupportType"]

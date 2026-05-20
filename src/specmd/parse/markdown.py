@@ -23,11 +23,49 @@ logger = logging.getLogger(__name__)
 # Backtick is invalid in YAML plain scalars but renders as inline code in Markdown/GitHub.
 _RE_BACKTICK_VALUE = re.compile(r"(:\s+)(``|`)(.+?)\2(\s*)$", re.MULTILINE)
 
+# Matches any ``- key: value`` list-item line at any indent level.
+# Used to detect and quote plain scalar values that are unsafe in YAML.
+# Uses ``[ \t]*`` (not ``\s*``) after the colon to prevent spanning newlines.
+_RE_KV_LINE = re.compile(r"^(\s*-\s+)(\w[\w/]*\s*:[ \t]*)(.+)$", re.MULTILINE)
+
+# Keys whose values may legitimately be YAML inline lists (e.g. ``[Agent, Tool]``).
+_YAML_LIST_KEYS: frozenset[str] = frozenset(("from", "to"))
+
 
 def _backtick_to_single_quoted(m: re.Match[str]) -> str:
     """Convert a backtick-wrapped YAML value to a YAML single-quoted string."""
     escaped = m.group(3).replace("'", "''")  # YAML: '' is an escaped single quote
     return f"{m.group(1)}'{escaped}'"
+
+
+def _quote_unsafe_scalar(m: re.Match[str]) -> str:
+    """Single-quote a plain scalar value that contains YAML-unsafe characters.
+
+    Skips already-quoted values and ``from``/``to`` keys whose ``[A, B]``
+    values are intentional YAML inline lists, not Markdown links.
+
+    Unsafe characters in YAML plain scalars (block context):
+    - ``[`` / ``{`` — YAML flow sequence / mapping start.
+    - ``: `` (colon-space) — YAML mapping indicator, misread mid-sentence.
+    """
+    indent_hyphen = m.group(1)
+    key_colon = m.group(2)
+    value = m.group(3)
+
+    # Skip already-quoted values (backtick pre-pass already made them safe).
+    if value[:1] in ("'", '"'):
+        return m.group(0)
+
+    # Skip from/to — [A, B] values there are intentional YAML inline lists.
+    key = key_colon.split(":")[0].strip()
+    if key in _YAML_LIST_KEYS:
+        return m.group(0)
+
+    if "[" in value or "{" in value or ": " in value:
+        escaped = value.replace("'", "''")
+        return f"{indent_hyphen}{key_colon}'{escaped}'"
+
+    return m.group(0)
 
 
 def _sentence_case(s: str) -> str:
@@ -312,6 +350,7 @@ class VocabularySection(Section):
         """Parse *content* into ``entries``."""
         self.entries = {}
         content = _RE_BACKTICK_VALUE.sub(_backtick_to_single_quoted, content)
+        content = _RE_KV_LINE.sub(_quote_unsafe_scalar, content)
         try:
             # BaseLoader intentional: all scalars stay as strings (no bool/int coercion).
             data = yaml.load(content, Loader=yaml.BaseLoader)  # noqa: S506

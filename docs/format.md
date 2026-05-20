@@ -924,10 +924,22 @@ Install SpecMD:
 pip install specmd
 ```
 
-Validate only (no output generated):
+Validate a model directory (raw YAML check + full semantic parse):
 
 ```shell
 specmd validate <MODEL_MARKDOWN_DIR>
+```
+
+Validate a single file (raw YAML syntax check only):
+
+```shell
+specmd validate <FILE.md>
+```
+
+Add `--strict` to treat raw YAML warnings as errors (useful in CI):
+
+```shell
+specmd validate --strict <MODEL_MARKDOWN_DIR>
 ```
 
 Generate RDF to inspect outputs:

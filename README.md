@@ -70,18 +70,41 @@ specmd <command> [options]
 
 Commands:
   generate (gen)   Generate output artefacts from a model directory
-  validate         Validate a model directory without generating output
+  validate         Validate a model directory or a single .md file
   migrate          Convert spec-parser format to SpecMD format
   export           Export a SpecMD model to another format
 ```
 
 ### Validate
 
-Check that a model directory is correctly formatted:
+Check raw YAML syntax of every `.md` file, then fully parse the model:
 
 ```shell
 specmd validate path/to/model
 ```
+
+Validate a single file (raw YAML syntax check only):
+
+```shell
+specmd validate path/to/file.md
+```
+
+Use `--strict` to exit with a non-zero code when raw YAML issues are found
+(without `--strict` they are reported as warnings but do not fail the command):
+
+```shell
+specmd validate --strict path/to/model
+```
+
+The validator runs two passes on a directory:
+
+1. **Raw YAML check** — each `## Entries` and `## Properties` section is
+   parsed with `yaml.safe_load` to catch unquoted `[`, `{`, or `: ` characters
+   that would cause parse errors in strict YAML consumers.
+2. **Full model parse** — the complete model is loaded and cross-referenced,
+   reporting semantic errors (unknown classes, missing metadata, etc.).
+
+A summary line is always printed: `N file(s) checked, M file(s) with issues.`
 
 ### Generate
 
@@ -128,6 +151,7 @@ specmd export path/to/model --output path/to/exported --format legacy
 | - | - | - |
 | `-o`/`--output DIR` | `generate`, `migrate`, `export` | Output directory |
 | `-f`/`--force` | `generate`, `migrate`, `export` | Overwrite existing output |
+| `--strict` | `validate` | Exit non-zero on raw YAML warnings |
 | `-q`/`--quiet` | all | Warnings and errors only |
 | `-v`/`--verbose` | all | Debug output |
 | `-V`/`--version` | top-level | Show version and exit |
