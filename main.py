@@ -19,6 +19,13 @@ import sys
 import tempfile
 from pathlib import Path
 
+# Allow running without installation: add src/ to sys.path when the package
+# is not already importable (e.g. in CI that clones the repo but skips pip install).
+try:
+    import specmd  # noqa: F401
+except ModuleNotFoundError:
+    sys.path.insert(0, str(Path(__file__).parent / "src"))
+
 from specmd.__main__ import main as specmd_main
 
 _NOTICE = """\
