@@ -327,7 +327,7 @@ class Model:
 
         for name in explicit:
             if name not in known:
-                logger.warning("specmd.yml namespace-order: %r not found in model — skipping", name)
+                logger.warning("specmd.yml namespace-order: %r not found in model -- skipping", name)
 
         ordered = [n for n in explicit if n in known]
 

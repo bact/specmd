@@ -431,7 +431,7 @@ class NestedListSection(Section):
                 logger.error(self._fmt_err_msg("expected single-key mapping '- name:'", f"got {n}: {item!r}"))
                 continue
             ((prop_name, attrs),) = item.items()
-            if attrs is None:
+            if attrs in (None, ""):
                 self.ikv[prop_name] = {}
             elif isinstance(attrs, list):
                 self.ikv[prop_name] = {}

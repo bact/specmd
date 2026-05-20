@@ -277,7 +277,7 @@ class TestLicenseConfig:
         assert m.spdx_license == "Apache-2.0"
 
     def test_license_falls_back_to_namespace_source(self, tmp_path: Path) -> None:
-        # No explicit config key — should pick up license from namespace source file.
+        # No explicit config key -- should pick up license from namespace source file.
         m = _make_model(tmp_path)
         # Fixture namespace file carries Community-Spec-1.0.
         assert m.spdx_license == "Community-Spec-1.0"
