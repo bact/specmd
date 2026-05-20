@@ -5,6 +5,7 @@
 - Reads Markdown model files from structured directories; generates RDF/OWL/SHACL,
   MkDocs Markdown, PlantUML diagrams, TeX, and single-file Markdown.
 - Test fixtures: `tests/fixtures/README.md`
+- Design docs: `docs/design.md`
 - Private alpha, one developer. No backward compat needed yet.
 
 ## specmd.yml configuration
@@ -15,12 +16,14 @@ Top-level scalar keys: `license` (SPDX ID), `base-uri`, `namespace-order`,
 Sub-blocks: `vocabulary`, `ontology`, `rdf`, `plantuml`.
 
 Key points:
+
 - Vocab/relationship defaults (`default-from`, `default-to`,
   `default-relationship-class`) live under `vocabulary:`, not at the top level.
 - `ontology.license-uri` — URI of the ontology licence.
   Distinct from top-level `license`, which is an SPDX identifier string.
 
 Internal variable convention:
+
 - `cfg_*` prefix — scalar config value (`str | None`).
 - `*_cfg` suffix — config sub-block (`dict`).
 
@@ -31,6 +34,7 @@ Canonical reference: `docs/specmd.yml.example`.
 Four subcommands: `generate` (alias `gen`), `validate`, `migrate`, `export`.
 
 **`validate`** accepts a model directory OR a single `.md` file.
+
 - Directory: two passes — (1) raw YAML check (`yaml.safe_load` on `## Entries`
   and `## Properties` sections), then (2) full `Model` load.
 - Single file: raw YAML check only (no `Model` loading).
