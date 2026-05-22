@@ -14,6 +14,7 @@ authors:
     orcid: "https://orcid.org/0000-0002-9698-1899"
 repository-code: "https://github.com/bact/specmd.git"
 url: "https://pypi.org/project/specmd/"
+doi: 10.5281/zenodo.20314484
 abstract: >-
   Convert Markdown model definitions to RDF ontologies and specification
   documents.
@@ -22,6 +23,7 @@ keywords:
   - specification
   - ontology
   - rdf
+  - documentation
 license: Apache-2.0
 version: 0.2.0
 date-released: "2026-05-20"
