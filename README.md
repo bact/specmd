@@ -8,6 +8,7 @@ SPDX-License-Identifier: CC0-1.0
 
 [![PyPI - Version](https://img.shields.io/pypi/v/specmd)](https://pypi.org/project/specmd/)
 ![GitHub License](https://img.shields.io/github/license/bact/specmd)
+[![DOI](https://zenodo.org/badge/1242583286.svg)](https://doi.org/10.5281/zenodo.20314484)
 
 Convert Markdown model definitions to RDF ontologies
 and specification documents.
