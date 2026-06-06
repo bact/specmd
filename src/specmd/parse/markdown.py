@@ -424,6 +424,38 @@ class VocabularySection(Section):
             self.entries[name] = entry
 
 
+class ConstraintsSection(Section):
+    """Section whose content is a flat list of free-form constraint expressions.
+
+    Each top-level ``- `` list item is captured verbatim as one expression::
+
+        - if element min 1 then rootElement min 1
+
+    Parsed into a ``constraints`` list of raw expression strings. Parsing of the
+    expression grammar itself happens later in :mod:`specmd.constraints`, so this
+    layer stays agnostic to the constraint syntax.
+    """
+
+    _RE_ITEM = re.compile(r"^-\s+(.*\S)\s*$")
+
+    def __init__(
+        self,
+        content: str | None,
+        filename: str | None = None,
+        context: str | None = None,
+    ) -> None:
+        self.constraints: list[str] = []
+        super().__init__(content, filename, context)
+
+    def load(self, content: str) -> None:
+        """Collect each top-level ``- expression`` line into ``constraints``."""
+        self.constraints = []
+        for line in content.splitlines():
+            m = self._RE_ITEM.match(line)
+            if m:
+                self.constraints.append(m.group(1).strip())
+
+
 class NestedListSection(Section):
     """Section whose content is a YAML list of single-key mappings.
 

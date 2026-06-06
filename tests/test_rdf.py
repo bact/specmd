@@ -310,3 +310,44 @@ class TestRDFSerialization:
         rdf_graph.serialize(out, format="json-ld", encoding="utf-8")
         data = json.loads(out.read_text())
         assert "@graph" in data or isinstance(data, list)
+
+
+class TestExcludeType:
+    """Per-property ``excludeType`` -> ``sh:not [ sh:class ... ]``."""
+
+    def test_exclude_type_emits_sh_not_class(self, rdf_graph: Graph) -> None:
+        coll = URIRef(CORE + "Collection")
+        agent = URIRef(CORE + "Agent")
+        forbidden_paths: set[URIRef] = set()
+        for pshape in rdf_graph.objects(coll, SH.property):
+            for not_node in rdf_graph.objects(pshape, SH["not"]):
+                if (not_node, SH["class"], agent) in rdf_graph:
+                    forbidden_paths |= set(rdf_graph.objects(pshape, SH.path))  # type: ignore[arg-type]
+        assert URIRef(CORE + "element") in forbidden_paths
+        assert URIRef(CORE + "rootElement") in forbidden_paths
+
+
+class TestConditionalCardinality:
+    """Class-level ``if X min m then Y min n`` -> ``sh:or``."""
+
+    def test_cond_card_emits_sh_or(self, rdf_graph: Graph) -> None:
+        from rdflib.collection import Collection as RDFList
+
+        coll = URIRef(CORE + "Collection")
+        or_lists = list(rdf_graph.objects(coll, SH["or"]))
+        assert or_lists, "no sh:or on Collection"
+        branches = list(RDFList(rdf_graph, or_lists[0]))
+
+        # branch 1: element maxCount 0 ; branch 2: rootElement minCount 1
+        found_ante = found_cons = False
+        for b in branches:
+            for ps in rdf_graph.objects(b, SH.property):
+                paths = set(rdf_graph.objects(ps, SH.path))
+                maxes = [int(m) for m in rdf_graph.objects(ps, SH.maxCount)]
+                mins = [int(m) for m in rdf_graph.objects(ps, SH.minCount)]
+                if URIRef(CORE + "element") in paths and maxes == [0]:
+                    found_ante = True
+                if URIRef(CORE + "rootElement") in paths and mins == [1]:
+                    found_cons = True
+        assert found_ante, "missing antecedent branch (element maxCount 0)"
+        assert found_cons, "missing consequent branch (rootElement minCount 1)"

@@ -252,11 +252,15 @@ Allowed headings:
   - `propName:` *(colon after name; type looked up from property definition)*
     - `minCount`: \<number\> *(Optional)*
     - `maxCount`: \<number\> *(Optional)*
+    - `excludeType`: \<class_name\>[, \<class_name\> ...] *(Optional)*
   - ...
 - External properties restrictions *(Optional)*
   - `/Namespace/propName:` *(colon after fully-qualified name)*
     - `minCount`: \<number\> *(Optional)*
     - `maxCount`: \<number\> *(Optional)*
+  - ...
+- Constraints *(Optional)*
+  - `- if <prop> min <m> then <prop> min <n>`
   - ...
 
 `minCount` and `maxCount` indicate the minimum and maximum number of times
@@ -266,6 +270,24 @@ a property may appear in a class (cardinality):
 - An unbounded maximum occurrence is represented by a star/asterisk (`*`).
 - If `minCount` is omitted, it defaults to `0`.
 - If `maxCount` is omitted, it defaults to `*`.
+
+`excludeType` forbids a property's value from being an instance of the named
+class (or any of its subclasses). List several classes separated by commas to
+forbid each of them. It maps to one `sh:not [ sh:class ... ]` per class on the
+property shape:
+
+```markdown
+## Properties
+
+- element:
+  - minCount: 0
+  - excludeType: SpdxDocument
+```
+
+```ttl
+sh:property [ sh:path <.../element> ;
+        sh:not [ sh:class <.../SpdxDocument> ] ] .
+```
 
 > **Note:** The `type:` line that appeared in the old format under each
 > property in the Properties section is no longer used. The type is derived
@@ -320,6 +342,36 @@ A class example.
 ```
 
 Output label in generated documents: **Instantiability: Abstract**
+
+#### Class constraints
+
+The optional `Constraints` heading holds class-level rules that span more than
+one property. Each constraint is a single `- ` list item written in a compact
+expression syntax. Supported forms:
+
+| Expression | Meaning |
+| - | - |
+| `if <X> min <m> then <Y> min <n>` | If the class has at least *m* `<X>`, it shall also have at least *n* `<Y>`. |
+
+A conditional-cardinality constraint maps to a `sh:or` on the class shape
+("the antecedent does not hold, **or** the consequent does"):
+
+```markdown
+## Constraints
+
+- if element min 1 then rootElement min 1
+```
+
+```ttl
+<.../ElementCollection> sh:or (
+    [ sh:property [ sh:path <.../element>     ; sh:maxCount 0 ] ]
+    [ sh:property [ sh:path <.../rootElement> ; sh:minCount 1 ] ] ) .
+```
+
+In generated documentation the same constraint is rendered as a sentence:
+
+> If the ElementCollection has at least 1 element, it shall also have at least
+> 1 rootElement.
 
 ### Datatypes
 

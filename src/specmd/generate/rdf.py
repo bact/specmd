@@ -17,6 +17,7 @@ from rdflib.collection import Collection
 from rdflib.namespace import DCTERMS, OWL, RDF, RDFS, SH, SKOS, VANN
 from rdflib.tools.rdf2dot import rdf2dot
 
+from specmd.constraints import CondCard, parse_constraint
 from specmd.parse.model import PropertyNature
 
 if TYPE_CHECKING:
@@ -80,6 +81,26 @@ def _xsd_range(rng: str, propname: str) -> URIRef | None:
         return URIRef("http://www.w3.org/2001/XMLSchema#" + rng[4:])
     logger.warning("Unknown namespace in range <%s> of property %s", rng, propname)
     return None
+
+
+def _resolve_class_iri(model: Model, ns_name: str, name: str) -> str | None:
+    """Resolve a class name (bare or ``/NS/Name``) to its IRI, or ``None`` if unknown."""
+    fq = name if name.startswith("/") else f"/{ns_name}/{name}"
+    cls = model.classes.get(fq)
+    if cls is None:
+        logger.warning("excludeType references unknown class %r", name)
+        return None
+    return cls.iri
+
+
+def _resolve_prop_iri(model: Model, ns_name: str, name: str) -> str | None:
+    """Resolve a property name (bare or ``/NS/name``) to its IRI, or ``None`` if unknown."""
+    fq = name if name.startswith("/") else f"/{ns_name}/{name}"
+    prop = model.properties.get(fq)
+    if prop is None:
+        logger.warning("Constraint references unknown property %r", name)
+        return None
+    return prop.iri
 
 
 # ---------------------------------------------------------------------------
@@ -230,6 +251,7 @@ def gen_rdf_ontology(model: Model) -> Graph:
     g.add((ont_node, OMG_ANN.copyright, Literal(ontology_cfg["copyright"], lang="en")))
 
     _gen_classes(model, g)
+    _gen_class_constraints(model, g)
     _gen_properties(model, g)
     _gen_vocabularies(model, g)
     _gen_individuals(model, g)
@@ -387,6 +409,55 @@ def _gen_classes(model: Model, g: Graph) -> None:
                 maxcount = c.properties[p]["maxCount"]
                 if maxcount != "*":
                     g.add((bnode, SH.maxCount, Literal(int(maxcount))))
+
+                # excludeType: forbid the value from being (an instance of) the named class(es).
+                _emit_exclude_types(g, bnode, model, c.ns.name, c.properties[p].get("excludeType"))
+
+
+def _emit_exclude_types(g: Graph, bnode: BNode, model: Model, ns_name: str, excl: str | None) -> None:
+    """Emit ``sh:not [ sh:class C ]`` on *bnode* for each comma-separated class in *excl*."""
+    if not excl:
+        return
+    for tname in (t.strip() for t in excl.split(",") if t.strip()):
+        excl_iri = _resolve_class_iri(model, ns_name, tname)
+        if excl_iri:
+            not_node = BNode()
+            g.add((bnode, SH["not"], not_node))
+            g.add((not_node, SH["class"], URIRef(excl_iri)))
+
+
+def _gen_class_constraints(model: Model, g: Graph) -> None:
+    """Emit SHACL for class-level constraints declared in ``## Constraints`` sections."""
+    for c in model.classes.values():
+        constraints = getattr(c, "constraints", None)
+        if not constraints:
+            continue
+        c_node = URIRef(c.iri)
+        for expr in constraints:
+            ast = parse_constraint(expr)
+            if isinstance(ast, CondCard):
+                if ast.ante_min < 1:
+                    logger.warning("Constraint antecedent min must be >= 1: %r", expr)
+                    continue
+                ante_iri = _resolve_prop_iri(model, c.ns.name, ast.ante_prop)
+                cons_iri = _resolve_prop_iri(model, c.ns.name, ast.cons_prop)
+                if not ante_iri or not cons_iri:
+                    continue
+                # "if A >= m then B >= n"  ==  (A <= m-1) OR (B >= n)
+                or_list = Collection(g, None)  # type: ignore[arg-type]
+                b1 = BNode()
+                ps1 = BNode()
+                g.add((b1, SH.property, ps1))
+                g.add((ps1, SH.path, URIRef(ante_iri)))
+                g.add((ps1, SH.maxCount, Literal(ast.ante_min - 1)))
+                b2 = BNode()
+                ps2 = BNode()
+                g.add((b2, SH.property, ps2))
+                g.add((ps2, SH.path, URIRef(cons_iri)))
+                g.add((ps2, SH.minCount, Literal(ast.cons_min)))
+                or_list.append(b1)
+                or_list.append(b2)
+                g.add((c_node, SH["or"], or_list.uri))
 
 
 def _gen_properties(model: Model, g: Graph) -> None:
