@@ -25,7 +25,7 @@ class TestParseConstraint:
         assert ast == PathType(path=("element",), classes=("Tool",))
 
     def test_path_type_multi_hop_multi_class(self) -> None:
-        ast = parse_constraint("customIdToLicense / elementValue type CustomLicense, SimpleLicensingText")
+        ast = parse_constraint("customIdToLicense -> elementValue type CustomLicense, SimpleLicensingText")
         assert ast == PathType(
             path=("customIdToLicense", "elementValue"),
             classes=("CustomLicense", "SimpleLicensingText"),
@@ -34,6 +34,22 @@ class TestParseConstraint:
     def test_path_type_negated(self) -> None:
         ast = parse_constraint("element not type SpdxDocument")
         assert ast == PathType(path=("element",), classes=("SpdxDocument",), negated=True)
+
+    def test_path_type_qualified_terms(self) -> None:
+        ast = parse_constraint("customIdToLicense -> /Core/elementValue type /ExpandedLicensing/CustomLicense, SimpleLicensingText")
+        assert ast == PathType(
+            path=("customIdToLicense", "/Core/elementValue"),
+            classes=("/ExpandedLicensing/CustomLicense", "SimpleLicensingText"),
+        )
+
+    def test_slash_is_no_longer_a_separator(self) -> None:
+        # ``/`` now only delimits qualified names; it is not a path separator.
+        assert parse_constraint("customIdToLicense / elementValue type Tool") is None
+
+    def test_duplicate_classes_removed(self) -> None:
+        # The class list is a set of alternatives; exact duplicates are dropped, order preserved.
+        ast = parse_constraint("x type /Core/License, Tool, /Core/License")
+        assert ast == PathType(path=("x",), classes=("/Core/License", "Tool"))
 
 
 class TestConstraintProse:
@@ -46,7 +62,7 @@ class TestConstraintProse:
         assert constraint_to_prose(None, "Whatever") == ""
 
     def test_path_type_prose(self) -> None:
-        ast = parse_constraint("customIdToLicense / elementValue type CustomLicense, CustomLicenseAddition, SimpleLicensingText")
+        ast = parse_constraint("customIdToLicense -> elementValue type CustomLicense, CustomLicenseAddition, SimpleLicensingText")
         assert constraint_to_prose(ast, "Anything") == (
             "Each customIdToLicense's elementValue shall be of type CustomLicense, CustomLicenseAddition, or SimpleLicensingText."
         )
@@ -54,6 +70,27 @@ class TestConstraintProse:
     def test_path_type_negated_prose(self) -> None:
         ast = parse_constraint("element not type SpdxDocument")
         assert constraint_to_prose(ast, "Anything") == "Each element shall not be of type SpdxDocument."
+
+    def test_qualified_terms_shortened_in_prose(self) -> None:
+        # Qualified path hops and class names render with their local names only.
+        ast = parse_constraint("customIdToLicense -> /Core/elementValue type /ExpandedLicensing/CustomLicense, SimpleLicensingText")
+        assert constraint_to_prose(ast, "LicenseExpression") == (
+            "Each customIdToLicense's elementValue shall be of type CustomLicense or SimpleLicensingText."
+        )
+
+    def test_ambiguous_class_short_names_fall_back_to_qualified(self) -> None:
+        # Two classes shortening to "License" must stay qualified; the unique one stays short.
+        ast = parse_constraint("x type /Core/License, /ExpandedLicensing/License, SimpleLicensingText")
+        assert constraint_to_prose(ast, "C") == ("Each x shall be of type /Core/License, /ExpandedLicensing/License, or SimpleLicensingText.")
+
+    def test_ambiguous_path_hops_fall_back_to_qualified(self) -> None:
+        ast = parse_constraint("/Core/a -> /Software/a type Tool")
+        assert constraint_to_prose(ast, "C") == "Each /Core/a's /Software/a shall be of type Tool."
+
+    def test_duplicate_class_collapsed_before_prose(self) -> None:
+        # Duplicates are removed at parse time, so the prose lists the class once.
+        ast = parse_constraint("x type /Core/License, /Core/License")
+        assert constraint_to_prose(ast, "C") == "Each x shall be of type License."
 
 
 class TestConstraintsSection:

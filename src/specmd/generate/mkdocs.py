@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 from jinja2 import Environment, PackageLoader, select_autoescape
 
-from specmd.constraints import constraint_to_prose, parse_constraint
+from specmd.constraints import constraint_to_prose, parse_constraint, property_constraint_to_prose
 
 if TYPE_CHECKING:
     from specmd.parse.model import Model
@@ -34,6 +34,7 @@ def gen_mkdocs(model: Model, outpath: Path, cfg: Any) -> None:
     jinja.globals["type_link"] = lambda x, showshort=False: type_link(x, model, showshort=showshort)
     jinja.globals["not_none"] = lambda x: str(x) if x is not None else ""
     jinja.globals["constraint_prose"] = lambda raw, cname: constraint_to_prose(parse_constraint(raw), cname)
+    jinja.globals["property_constraint_prose"] = lambda raw, pname: property_constraint_to_prose(parse_constraint(raw), pname)
 
     for ns in model.namespaces:
         d = outpath / ns.name

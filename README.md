@@ -16,6 +16,7 @@ and specification documents.
 ## Contents
 
 - [Functionality](#functionality)
+  - [Improved SHACL coverage](#improved-shacl-coverage)
 - [Installation](#installation)
 - [Prerequisites](#prerequisites)
 - [Usage](#usage)
@@ -25,7 +26,6 @@ and specification documents.
   - [Export](#export)
   - [Common options](#common-options)
 - [Model configuration](#model-configuration)
-- [Richer SHACL than spec-parser](#richer-shacl-than-spec-parser)
 - [spec-parser compatibility](#spec-parser-compatibility)
 - [Testing](#testing)
   - [shacl2code compatibility test](#shacl2code-compatibility-test)
@@ -46,6 +46,21 @@ It can then generate one or more of the following outputs:
 | `tex` | TeX source for printable specification |
 | `singlefile` | Single Markdown file (suitable for conversion to Word, PDF, etc.) |
 | `webpages` | Per-IRI web pages *(not yet implemented)* |
+
+### Improved SHACL coverage
+
+A few SpecMD syntax additions capture validation rules that spec-parser can
+only express as prose. SpecMD compiles them to SHACL automatically:
+
+| SpecMD syntax | Generated SHACL | Validates | Example |
+| - | - | - | - |
+| RelationshipType vocab `from:` / `to:` / `relationshipClass:` | `sh:or` keyed on `relationshipType`, with `sh:class` | a relationship's source/target classes, per relationship type | [RelationshipType](https://github.com/spdx/spdx-3-model/blob/develop/model/Core/Vocabularies/RelationshipType.md) |
+| `if A min m then B min n` (class `Constraints`) | `sh:or` | conditional cardinality across two properties | [ElementCollection](https://github.com/spdx/spdx-3-model/blob/develop/model/Core/Classes/ElementCollection.md) |
+| `b type C, D` (property `Constraints`) | sequence-path `sh:class` / `sh:or` | the type of a value's sub-property (type scoping) | [customIdToLicense](https://github.com/spdx/spdx-3-model/blob/develop/model/SimpleLicensing/Properties/customIdToLicense.md) |
+| `a not type C` (class `Constraints`) | `sh:not [ sh:class ]` | forbidden value types | [ElementCollection](https://github.com/spdx/spdx-3-model/blob/develop/model/Core/Classes/ElementCollection.md) |
+
+Syntax: [docs/format.md](docs/format.md).
+SHACL mapping and rationale: [docs/design.md](docs/design.md).
 
 ## Installation
 
@@ -195,21 +210,6 @@ rdf:
 
 See [docs/format.md](docs/format.md#model-configuration-specmdyml) for
 the full reference.
-
-## Richer SHACL than spec-parser
-
-A few SpecMD syntax additions capture validation rules that spec-parser can
-only express as prose. SpecMD compiles them to SHACL automatically:
-
-| SpecMD syntax | Generated SHACL | Validates |
-| - | - | - |
-| Relationship vocab `from:` / `to:` / `relationshipClass:` | `sh:or` keyed on `relationshipType`, with `sh:class` | a relationship's source/target classes, per relationship type |
-| `if A min m then B min n` (class `Constraints`) | `sh:or` | conditional cardinality across two properties |
-| `a / b type C, D` (class `Constraints`) | sequence-path `sh:class` / `sh:or` | the type of a value's sub-property (type scoping) |
-| `a not type C` (class `Constraints`) | `sh:not [ sh:class ]` | forbidden value types |
-
-Syntax: [docs/format.md](docs/format.md). SHACL mapping and rationale:
-[docs/design.md](docs/design.md).
 
 ## spec-parser compatibility
 

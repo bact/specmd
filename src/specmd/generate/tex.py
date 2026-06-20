@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 from jinja2 import Environment, PackageLoader, select_autoescape
 
-from specmd.constraints import constraint_to_prose, parse_constraint
+from specmd.constraints import constraint_to_prose, parse_constraint, property_constraint_to_prose
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -34,6 +34,7 @@ def gen_tex(model: Model, outpath: Path, cfg: Any) -> None:  # pylint: disable=u
     jinja.globals["tex_escape"] = tex_escape
     jinja.globals["markdown_to_tex"] = markdown_to_tex
     jinja.globals["constraint_prose"] = lambda raw, cname: constraint_to_prose(parse_constraint(raw), cname)
+    jinja.globals["property_constraint_prose"] = lambda raw, pname: property_constraint_to_prose(parse_constraint(raw), pname)
 
     for ns in model.namespaces:
         d = outpath / ns.name

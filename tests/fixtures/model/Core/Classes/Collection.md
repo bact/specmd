@@ -31,4 +31,3 @@ Collection gathers a set of elements and may designate one or more as roots.
 - if element min 1 then rootElement min 1
 - element not type Agent
 - rootElement not type Agent
-- customIdToLicense / elementValue type Tool, ElementMap

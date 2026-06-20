@@ -11,6 +11,15 @@
 {% endblock %}
 %
 {% block extra %}
+{% if constraints %}
+\spdxpagepart{Constraints}
+\begin{itemize}
+\tightlist
+{% for c in constraints %}
+\item {{tex_escape(property_constraint_prose(c, metadata["name"]))}}
+{% endfor %}
+\end{itemize}
+{% endif %}
 {% if used_in %}
 \spdxpagepart{Referenced}
 \begin{itemize}

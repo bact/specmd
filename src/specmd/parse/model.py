@@ -616,6 +616,12 @@ class Property:
             if p not in self.metadata:
                 logger.error("%s: missing required metadata field %r", fname, p)
 
+        if "Constraints" in sf.sections:
+            cse = ConstraintsSection(sf.sections["Constraints"], filename=self.fqname, context="constraints")
+            self.constraints: list[str] = cse.constraints
+        else:
+            self.constraints = []
+
         self.iri: str = f"{self.ns.iri}/{self.name}"
         self.used_in: list[str] = []
         self.translations: dict[str, dict[str, str]] = _load_text_translations(sf)

@@ -75,16 +75,33 @@ specialised rendering of relationship types. The earlier format used only
 prose descriptions. The `specmd migrate` command extracts these fields
 automatically from existing prose descriptions where possible.
 
-### Class constraints
+### Constraints
 
-SpecMD adds an optional `## Constraints` section on classes for rules
-that span more than one property or restrict the type of a property's
-value. Each constraint is a single `- ` list item:
+SpecMD adds an optional `## Constraints` section, on **classes** and on
+**properties**, for rules that cardinality and range alone cannot express.
+Each constraint is a single `- ` list item:
 
-- `if <X> min <m> then <Y> min <n>` — conditional cardinality.
-- `<prop>(/<prop>)* type <Class>(, ...)` — the node reached by a property
+- `if <X> min <m> then <Y> min <n>` — conditional cardinality (class only).
+- `<term>(-> <term>)* type <term>(, ...)` — the node reached by a property
   path must be one of the named classes.
-- `<prop>(/<prop>)* not type <Class>(, ...)` — and the negated form.
+- `<term>(-> <term>)* not type <term>(, ...)` — and the negated form.
+
+Each `<term>` (a path hop or a class) is a bare local name resolved in the
+owner's namespace, or a fully-qualified `/Namespace/Name`. Path hops are joined
+with `->` rather than `/`, so a qualified name's slashes are unambiguous — the
+real `customIdToLicense` reaches `/Core/elementValue` and allows
+`/ExpandedLicensing/CustomLicense`, which span three namespaces. Qualified
+terms render by their local name in prose, falling back to the full
+`/Namespace/Name` when two terms in the same constraint would otherwise
+shorten to the same local name.
+
+A `type` / `not type` constraint authored on a **property** is written
+relative to the property's value and applies wherever the property is used;
+SpecMD prepends the property name and emits it on each using class. This is
+the natural home for a restriction intrinsic to the property — for example,
+the `elementValue` of the `ElementMap` that `customIdToLicense` points to. The
+same rule may instead be authored on a class when the path starts from one of
+that class's own properties.
 
 These compile to SHACL (`sh:or`, sequence paths, `sh:class`/`sh:not`) — see
 [Class-level constraints](#class-level-constraints). spec-parser has no
@@ -242,8 +259,8 @@ well-formed and self-contained under OWL 2 without requiring
 
 ### Class-level constraints
 
-The `## Constraints` section on a class compiles to SHACL on that class's
-node shape. None of these have a spec-parser equivalent.
+The `## Constraints` section compiles to SHACL on a class's node shape. None
+of these have a spec-parser equivalent.
 
 - **Conditional cardinality** (`if X min m then Y min n`) → `sh:or` of
   "antecedent fails" (`X` has `sh:maxCount m-1`) and "consequent holds"
@@ -256,6 +273,12 @@ node shape. None of these have a spec-parser equivalent.
   cannot.
 - **Type exclusion** (`a not type C`) → the same shape with the class choice
   wrapped in `sh:not`.
+
+A type constraint may be authored on the **property** rather than a class
+(`## Constraints` on the property file, written relative to the value). SpecMD
+prepends the property name to the path and emits the same shape on every class
+that uses the property, so a property-intrinsic rule is declared once and
+enforced everywhere the property appears.
 
 A single parsed constraint feeds both the SHACL emitter and the prose
 rendered into the documentation, so the shapes and the human-readable

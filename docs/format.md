@@ -260,8 +260,8 @@ Allowed headings:
   - ...
 - Constraints *(Optional)*
   - `- if <prop> min <m> then <prop> min <n>`
-  - `- <prop>(/<prop>)* type <Class>(, <Class>)*`
-  - `- <prop>(/<prop>)* not type <Class>(, <Class>)*`
+  - `- <term>(-> <term>)* type <term>(, <term>)*`
+  - `- <term>(-> <term>)* not type <term>(, <term>)*`
   - ...
 
 `minCount` and `maxCount` indicate the minimum and maximum number of times
@@ -331,15 +331,24 @@ Output label in generated documents: **Instantiability: Abstract**
 
 #### Class constraints
 
-The optional `Constraints` heading holds class-level rules that span more than
-one property. Each constraint is a single `- ` list item written in a compact
-expression syntax. Supported forms:
+The optional `Constraints` heading on a class holds rules that span more than
+one of the class's properties, or that restrict the type of a node reached by
+following the class's properties. Each constraint is a single `- ` list item:
 
 | Expression | Meaning |
 | - | - |
 | `if <X> min <m> then <Y> min <n>` | If the class has at least *m* `<X>`, it shall also have at least *n* `<Y>`. |
-| `<prop>(/<prop>)* type <Class>(, <Class>)*` | Every node reached by following the property path shall be an instance of one of the named classes. |
-| `<prop>(/<prop>)* not type <Class>(, <Class>)*` | No node reached by following the property path may be an instance of any of the named classes. |
+| `<term>(-> <term>)* type <term>(, <term>)*` | Every node reached by following the property path shall be an instance of one of the named classes. |
+| `<term>(-> <term>)* not type <term>(, <term>)*` | No node reached by following the property path may be an instance of any of the named classes. |
+
+Each `<term>` — a path hop or a class — is either a bare local name (resolved
+in the owner's namespace) or a fully-qualified `/Namespace/Name`. Path hops are
+separated by `->` so that `/` is free to appear inside a qualified name.
+
+The path of a `type` / `not type` constraint starts from one of the class's own
+properties. To restrict the type of a property's value independently of any
+class, author the constraint on the property instead (see
+[Property constraints](#property-constraints)).
 
 A conditional-cardinality constraint maps to a `sh:or` on the class shape
 ("the antecedent does not hold, **or** the consequent does"):
@@ -356,38 +365,14 @@ A conditional-cardinality constraint maps to a `sh:or` on the class shape
     [ sh:property [ sh:path <.../rootElement> ; sh:minCount 1 ] ] ) .
 ```
 
-In generated documentation the same constraint is rendered as a sentence:
-
 > If the ElementCollection has at least 1 element, it shall also have at least
 > 1 rootElement.
 
-A property-path value-type constraint restricts the type of the node reached by
-following a chain of properties. The left side is a slash-separated property
-path (one or more hops); the right side lists the allowed classes. It maps to a
-`sh:property` shape whose `sh:path` is a SHACL **sequence path** when there is
-more than one hop, and whose value is restricted with `sh:class` (single class)
-or `sh:or` of `sh:class` (several):
-
-```markdown
-## Constraints
-
-- customIdToLicense / elementValue type CustomLicense, CustomLicenseAddition, SimpleLicensingText
-```
-
-```ttl
-<.../SomeClass> sh:property [
-    sh:path ( <.../customIdToLicense> <.../elementValue> ) ;
-    sh:or ( [ sh:class <.../CustomLicense> ]
-            [ sh:class <.../CustomLicenseAddition> ]
-            [ sh:class <.../SimpleLicensingText> ] ) ] .
-```
-
-> Each customIdToLicense's elementValue shall be of type CustomLicense,
-> CustomLicenseAddition, or SimpleLicensingText.
-
-Prefix the path with `not` to forbid the listed types instead of requiring
-them. A single-hop `not type` is the common case ("the value shall not be of
-type ..."); it maps to `sh:not` wrapping the class restriction:
+A type constraint maps to a `sh:property` shape whose `sh:path` is a SHACL
+**sequence path** for multi-hop paths, restricting the reached node with
+`sh:class` (one class) or `sh:or` of `sh:class` (several). Prefix the path with
+`not` to forbid the listed types instead (wrapping the class choice in
+`sh:not`):
 
 ```markdown
 ## Constraints
@@ -402,9 +387,6 @@ type ..."); it maps to `sh:not` wrapping the class restriction:
 ```
 
 > Each element shall not be of type SpdxDocument.
-
-Author every type constraint in the class whose `Properties` section declares
-the first property in the path, so the shape lands on the right node.
 
 ### Datatypes
 
@@ -515,6 +497,66 @@ Allowed headings:
   - `nature`: `DataProperty` OR `ObjectProperty`
   - `range`: \<xsd_type\> OR \<class_name\> OR `/Namespace/ClassName`
   - `sinceVersion`, `deprecated`, `deprecatedVersion`, `isReplacedBy` *(Optional)*
+- Constraints *(Optional)*
+  - `- <term>(-> <term>)* type <term>(, <term>)*`
+  - `- <term>(-> <term>)* not type <term>(, <term>)*`
+
+#### Property constraints
+
+A property's optional `Constraints` heading restricts the type of a node
+reached *from the property's value*. The path is written relative to the value,
+so the property name itself is implicit. This is the right home for a rule that
+is intrinsic to the property regardless of which class uses it — for example,
+constraining the `elementValue` of the `ElementMap` that `customIdToLicense`
+points to.
+
+Because the value's `elementValue` and the allowed license classes live in
+different namespaces from `customIdToLicense`, they are written as
+fully-qualified `/Namespace/Name` terms; `SimpleLicensingText` is in the same
+namespace as the property, so its bare name suffices (qualifying it would be
+equivalent):
+
+```markdown
+# customIdToLicense
+
+## Metadata
+
+- name: customIdToLicense
+- nature: ObjectProperty
+- range: /Core/ElementMap
+
+## Constraints
+
+- /Core/elementValue type /ExpandedLicensing/CustomLicense, /ExpandedLicensing/CustomLicenseAddition, SimpleLicensingText
+```
+
+SpecMD prepends the property name to the path and emits the constraint on
+**every class that uses the property**, as a SHACL sequence path:
+
+```ttl
+<.../UsingClass> sh:property [
+    sh:path ( <.../SimpleLicensing/customIdToLicense> <.../Core/elementValue> ) ;
+    sh:or ( [ sh:class <.../ExpandedLicensing/CustomLicense> ]
+            [ sh:class <.../ExpandedLicensing/CustomLicenseAddition> ]
+            [ sh:class <.../SimpleLicensing/SimpleLicensingText> ] ) ] .
+```
+
+Qualified terms are shown by their local name in the rendered prose (falling
+back to the full `/Namespace/Name` only when two terms would otherwise collide
+on the same local name):
+
+> Each customIdToLicense's elementValue shall be of type CustomLicense,
+> CustomLicenseAddition, or SimpleLicensingText.
+
+The same rule may instead be authored on a class that uses the property, by
+naming the property as the first hop:
+
+```markdown
+- customIdToLicense -> /Core/elementValue type /ExpandedLicensing/CustomLicense, /ExpandedLicensing/CustomLicenseAddition, SimpleLicensingText
+```
+
+Only `type` / `not type` constraints are valid on a property; conditional
+cardinality (`if ... then ...`) is a class-level rule.
 
 #### Property example
 

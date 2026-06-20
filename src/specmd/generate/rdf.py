@@ -23,7 +23,7 @@ from specmd.parse.model import PropertyNature
 if TYPE_CHECKING:
     from rdflib.term import Node
 
-    from specmd.parse.model import Class, Model
+    from specmd.parse.model import Class, Model, Property
 
 logger = logging.getLogger(__name__)
 
@@ -410,6 +410,26 @@ def _gen_classes(model: Model, g: Graph) -> None:
                 maxcount = c.properties[p]["maxCount"]
                 if maxcount != "*":
                     g.add((bnode, SH.maxCount, Literal(int(maxcount))))
+
+                # Property-level constraints apply to the property's value, so they
+                # propagate to every using class with the property name prepended.
+                _emit_property_constraints(model, g, node, prop)
+
+
+def _emit_property_constraints(model: Model, g: Graph, c_node: URIRef, prop: Property) -> None:
+    """Emit a property's own ``## Constraints`` on *c_node*, scoped through the property.
+
+    Only path-type constraints (``type`` / ``not type``) are valid on a property;
+    the property name is prepended to the constraint path so the resulting SHACL
+    targets the property's value (e.g. ``customIdToLicense / elementValue``).
+    """
+    for expr in getattr(prop, "constraints", []):
+        ast = parse_constraint(expr)
+        if isinstance(ast, PathType):
+            scoped = PathType(path=(prop.name, *ast.path), classes=ast.classes, negated=ast.negated)
+            _emit_path_type(model, g, c_node, prop.ns.name, scoped)
+        else:
+            logger.warning("Property %s: only 'type'/'not type' constraints are supported, got %r", prop.iri, expr)
 
 
 def _emit_cond_card(model: Model, g: Graph, c_node: URIRef, ns_name: str, ast: CondCard) -> None:

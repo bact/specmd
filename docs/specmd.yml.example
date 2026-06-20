@@ -5,6 +5,19 @@
 # All keys are optional. Omit any section to accept the built-in defaults.
 
 # ---------------------------------------------------------------------------
+# Ontology base URI
+# ---------------------------------------------------------------------------
+
+# Base URI shared by all namespace IRIs (a trailing slash is added if absent).
+# Recommended for any non-SPDX model -- it is explicit and portable.
+# Resolution order when omitted:
+#   1. This key.
+#   2. Derived from the Core namespace IRI (the SPDX 3 convention), i.e. the
+#      namespace 'id' with a trailing 'Core/' stripped.
+#   3. Longest common prefix of all namespace IRIs (with a warning).
+base-uri: https://spdx.org/rdf/3/terms/
+
+# ---------------------------------------------------------------------------
 # Namespace selection and ordering
 # ---------------------------------------------------------------------------
 
