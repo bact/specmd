@@ -15,7 +15,16 @@ from typing import Any, ClassVar
 
 import yaml
 
-from .markdown import ContentSection, NestedListSection, SingleListSection, SpecFile, VocabDefaults, VocabularySection, _split_class_list
+from .markdown import (
+    ConstraintsSection,
+    ContentSection,
+    NestedListSection,
+    SingleListSection,
+    SpecFile,
+    VocabDefaults,
+    VocabularySection,
+    _split_class_list,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -520,6 +529,12 @@ class Class:
             self.ext_prop_restrs: dict[str, dict[str, str]] = s2.ikv
         else:
             self.ext_prop_restrs = {}
+
+        if "Constraints" in sf.sections:
+            cse = ConstraintsSection(sf.sections["Constraints"], filename=self.fqname, context="constraints")
+            self.constraints: list[str] = cse.constraints
+        else:
+            self.constraints = []
 
         if self.name != self.metadata.get("name", ""):
             logger.error("%s: heading name %r does not match metadata name: %r", fname, self.name, self.metadata.get("name"))

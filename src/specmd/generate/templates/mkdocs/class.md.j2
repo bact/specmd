@@ -35,6 +35,14 @@
 | {{property_link(name)}} | {{type_link(all_properties[name.rpartition("/")[-1]]["fulltype"])}} | {{kv["minCount"]}} | {{kv["maxCount"]}} |
     {% endfor %}
 {% endif %}
+{% if constraints %}
+
+## Constraints
+
+{% for c in constraints %}
+- {{constraint_prose(c, metadata["name"])}}
+{% endfor %}
+{% endif %}
 {% if ext_prop_restrs %}
 
 ## External properties cardinality updates
