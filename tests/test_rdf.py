@@ -327,30 +327,51 @@ class TestNegatedPathType:
         assert URIRef(CORE + "rootElement") in forbidden_paths
 
 
+class TestConditionalValuePresence:
+    """``if to has NoneElement then to max 1`` -> ``sh:or([sh:not[hasValue]], [maxCount 1])``."""
+
+    def test_presence_conditional(self, rdf_graph: Graph) -> None:
+        from rdflib.collection import Collection as RDFList
+
+        rel = URIRef(CORE + "Relationship")
+        none = URIRef(CORE + "NoneElement")
+        to = URIRef(CORE + "to")
+        found_ante = found_cons = False
+        for or_list in rdf_graph.objects(rel, SH["or"]):
+            for b in RDFList(rdf_graph, or_list):
+                for inner in rdf_graph.objects(b, SH["not"]):
+                    for ps in rdf_graph.objects(inner, SH.property):
+                        if to in set(rdf_graph.objects(ps, SH.path)) and (ps, SH["hasValue"], none) in rdf_graph:
+                            found_ante = True
+                for ps in rdf_graph.objects(b, SH.property):
+                    if to in set(rdf_graph.objects(ps, SH.path)) and [int(m) for m in rdf_graph.objects(ps, SH.maxCount)] == [1]:
+                        found_cons = True
+        assert found_ante, "missing sh:not[to hasValue NoneElement]"
+        assert found_cons, "missing to maxCount 1 consequent"
+
+
 class TestConditionalCardinality:
     """Class-level ``if X min m then Y min n`` -> ``sh:or``."""
 
     def test_cond_card_emits_sh_or(self, rdf_graph: Graph) -> None:
         from rdflib.collection import Collection as RDFList
 
-        coll = URIRef(CORE + "Collection")
-        or_lists = list(rdf_graph.objects(coll, SH["or"]))
-        assert or_lists, "no sh:or on Collection"
-        branches = list(RDFList(rdf_graph, or_lists[0]))
+        def _min1(ps: object, prop: str) -> bool:
+            return URIRef(CORE + prop) in set(rdf_graph.objects(ps, SH.path)) and [int(m) for m in rdf_graph.objects(ps, SH.minCount)] == [1]
 
-        # branch 1: element maxCount 0 ; branch 2: rootElement minCount 1
+        coll = URIRef(CORE + "Collection")
         found_ante = found_cons = False
-        for b in branches:
-            for ps in rdf_graph.objects(b, SH.property):
-                paths = set(rdf_graph.objects(ps, SH.path))
-                maxes = [int(m) for m in rdf_graph.objects(ps, SH.maxCount)]
-                mins = [int(m) for m in rdf_graph.objects(ps, SH.minCount)]
-                if URIRef(CORE + "element") in paths and maxes == [0]:
-                    found_ante = True
-                if URIRef(CORE + "rootElement") in paths and mins == [1]:
+        for or_list in rdf_graph.objects(coll, SH["or"]):
+            for b in RDFList(rdf_graph, or_list):
+                # antecedent: sh:not [ element minCount 1 ]
+                for inner in rdf_graph.objects(b, SH["not"]):
+                    if any(_min1(ps, "element") for ps in rdf_graph.objects(inner, SH.property)):
+                        found_ante = True
+                # consequent: rootElement minCount 1
+                if any(_min1(ps, "rootElement") for ps in rdf_graph.objects(b, SH.property)):
                     found_cons = True
-        assert found_ante, "missing antecedent branch (element maxCount 0)"
-        assert found_cons, "missing consequent branch (rootElement minCount 1)"
+        assert found_ante, "missing antecedent branch sh:not[element minCount 1]"
+        assert found_cons, "missing consequent branch rootElement minCount 1"
 
 
 class TestPathTypeConstraint:
@@ -419,8 +440,7 @@ class TestRangeAndFixedConstraints:
         coll = URIRef(CORE + "Collection")
         none_support = URIRef(CORE + "SupportType/noSupport")
         found = any(
-            URIRef(CORE + "supportLevel") in set(rdf_graph.objects(ps, SH.path))
-            and (ps, SH["hasValue"], none_support) in rdf_graph
+            URIRef(CORE + "supportLevel") in set(rdf_graph.objects(ps, SH.path)) and (ps, SH["hasValue"], none_support) in rdf_graph
             for ps in rdf_graph.objects(coll, SH.property)
         )
         assert found, "no sh:hasValue noSupport on supportLevel"

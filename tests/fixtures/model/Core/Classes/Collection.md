@@ -38,4 +38,5 @@ Collection gathers a set of elements and may designate one or more as roots.
 - element not type Agent
 - rootElement not type Agent
 - score in 0..10
-- supportLevel = noSupport
+- supportLevel is noSupport
+- if score in 5..10 then rootElement min 1

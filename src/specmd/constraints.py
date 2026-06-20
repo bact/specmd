@@ -47,9 +47,6 @@ from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
-# ``if element min 1 then rootElement min 1``
-_RE_COND_CARD = re.compile(r"^if\s+(?P<ante>\w+)\s+min\s+(?P<amin>\d+)\s+then\s+(?P<cons>\w+)\s+min\s+(?P<cmin>\d+)$")
-
 # A term is a bare local name or a fully-qualified ``/Namespace/Name``.
 _TERM = r"/\w+/\w+|\w+"
 # A class term may carry a per-item ``not``.
@@ -70,19 +67,33 @@ _RE_PATTERN = re.compile(rf"^(?P<path>{_PATH})\s+matches\s+`(?P<regex>[^`]*)`(?:
 _NUM = r"-?\d+(?:\.\d+)?"
 _RE_RANGE = re.compile(rf"^(?P<path>{_PATH})\s+in\s+(?P<lo>{_NUM})\s*\.\.\s*(?P<hi>{_NUM})$")
 
-# ``relationshipType = hasConcludedLicense``  (value: bare entry, or /NS/Vocab/entry)
-_VALUE = r"/\w+/\w+/\w+|\w+"
-_RE_FIXED = re.compile(rf"^(?P<path>{_PATH})\s*=\s*(?P<value>{_VALUE})$")
+# ``relationshipType is hasConcludedLicense``  (``is`` reads as a requirement, not assignment)
+# A value: a bare name, a 2-segment individual (``/NS/Name``), or a 3-segment vocab entry.
+_VALUE = r"/\w+/\w+(?:/\w+)?|\w+"
+_RE_FIXED = re.compile(rf"^(?P<path>{_PATH})\s+is\s+(?P<value>{_VALUE})$")
+
+# ``element min 1``  ``to max 1``  (a cardinality predicate, used standalone or inside if/then)
+_RE_CARD = re.compile(rf"^(?P<path>{_PATH})\s+(?P<kind>min|max)\s+(?P<count>\d+)$")
+
+# ``to has /Core/NoneElement``  (a value-presence predicate)
+_RE_PRESENT = re.compile(rf"^(?P<path>{_PATH})\s+has\s+(?P<value>{_VALUE})$")
 
 
 @dataclass(frozen=True)
-class CondCard:
-    """Conditional cardinality: if *ante_prop* >= *ante_min* then *cons_prop* >= *cons_min*."""
+class Cardinality:
+    """A count bound on *path*: ``min`` -> ``sh:minCount``, ``max`` -> ``sh:maxCount``."""
 
-    ante_prop: str
-    ante_min: int
-    cons_prop: str
-    cons_min: int
+    path: tuple[str, ...]
+    kind: str  # "min" | "max"
+    count: int
+
+
+@dataclass(frozen=True)
+class Present:
+    """The node reached via *path* includes the value *value* (``sh:hasValue``)."""
+
+    path: tuple[str, ...]
+    value: str
 
 
 @dataclass(frozen=True)
@@ -124,20 +135,50 @@ class Fixed:
     value: str
 
 
-Constraint = CondCard | PathType | Pattern | Range | Fixed
+# A predicate constrains the nodes reached by a property path.
+Predicate = Cardinality | Present | PathType | Pattern | Range | Fixed
+
+
+@dataclass(frozen=True)
+class Conditional:
+    """``if <antecedent> then <consequent>`` -- both sides are predicates."""
+
+    antecedent: Predicate
+    consequent: Predicate
+
+
+Constraint = Predicate | Conditional
 
 
 def parse_constraint(expr: str) -> Constraint | None:
     """Parse a single constraint expression into an AST node, or ``None`` if unrecognised."""
     expr = expr.strip()
-    m = _RE_COND_CARD.match(expr)
+    if expr.startswith("if "):
+        rest = expr[3:]
+        sep = rest.find(" then ")
+        if sep == -1:
+            logger.warning("Conditional constraint missing 'then': %r", expr)
+            return None
+        antecedent = _parse_predicate(rest[:sep].strip())
+        consequent = _parse_predicate(rest[sep + len(" then ") :].strip())
+        if antecedent is None or consequent is None:
+            logger.warning("Unrecognised predicate in conditional: %r", expr)
+            return None
+        return Conditional(antecedent=antecedent, consequent=consequent)
+    pred = _parse_predicate(expr)
+    if pred is None:
+        logger.warning("Unrecognised constraint expression: %r", expr)
+    return pred
+
+
+def _parse_predicate(expr: str) -> Predicate | None:  # noqa: PLR0911
+    """Parse a single (non-conditional) predicate, or ``None``."""
+    m = _RE_CARD.match(expr)
     if m:
-        return CondCard(
-            ante_prop=m.group("ante"),
-            ante_min=int(m.group("amin")),
-            cons_prop=m.group("cons"),
-            cons_min=int(m.group("cmin")),
-        )
+        return Cardinality(path=_split_path(m.group("path")), kind=m.group("kind"), count=int(m.group("count")))
+    m = _RE_PRESENT.match(expr)
+    if m:
+        return Present(path=_split_path(m.group("path")), value=m.group("value"))
     m = _RE_PATH_TYPE.match(expr)
     if m:
         positives, negatives = _split_class_terms(m.group("classes"), alias_negate=bool(m.group("neg")))
@@ -154,7 +195,6 @@ def parse_constraint(expr: str) -> Constraint | None:
     m = _RE_FIXED.match(expr)
     if m:
         return Fixed(path=_split_path(m.group("path")), value=m.group("value"))
-    logger.warning("Unrecognised constraint expression: %r", expr)
     return None
 
 
@@ -204,40 +244,83 @@ def _join_or(items: tuple[str, ...]) -> str:
     return ", ".join(items[:-1]) + ", or " + items[-1]
 
 
-def constraint_to_prose(ast: Constraint | None, subject: str) -> str:
+def _path_text(path: tuple[str, ...]) -> str:
+    """Possessive-joined local names of a path: ``customIdToLicense's elementValue``."""
+    return "'s ".join(_render_terms(path))
+
+
+def _rel_word(kind: str) -> str:
+    return "at least" if kind == "min" else "at most"
+
+
+def _type_body(ast: PathType) -> str:
+    """The ``shall (not) be of type …`` clause for a :class:`PathType`."""
+    pos = _join_or(tuple(_render_terms(ast.positives))) if ast.positives else ""
+    neg = _join_or(tuple(_render_terms(ast.negatives))) if ast.negatives else ""
+    if pos and neg:
+        return f"shall be of type {pos}, and not {neg}"
+    if neg:
+        return f"shall not be of type {neg}"
+    return f"shall be of type {pos}"
+
+
+def _flag_suffix(flags: str) -> str:
+    if "i" in flags:
+        return " (case-insensitive)"
+    return f" (flags: {flags})" if flags else ""
+
+
+def _condition_clause(ast: Predicate, subject: str) -> str:
+    """Antecedent phrasing: 'the X has at least 1 element', 'the X's to includes NoneElement', …."""
+    if isinstance(ast, Cardinality):
+        return f"the {subject} has {_rel_word(ast.kind)} {ast.count} {_path_text(ast.path)}"
+    if isinstance(ast, Present):
+        return f"the {subject}'s {_path_text(ast.path)} includes {_short(ast.value)}"
+    if isinstance(ast, Range):
+        return f"the {subject}'s {_path_text(ast.path)} is between {ast.lo} and {ast.hi}"
+    if isinstance(ast, Fixed):
+        return f"the {subject}'s {_path_text(ast.path)} is {_short(ast.value)}"
+    sentence = constraint_to_prose(ast, subject)
+    return sentence[:1].lower() + sentence[1:].rstrip(".") if sentence else ""
+
+
+def _requirement_clause(ast: Predicate) -> str:  # noqa: PLR0911
+    """Consequent phrasing, referring to the subject as 'it'/'its'."""
+    if isinstance(ast, Cardinality):
+        return f"it shall have {_rel_word(ast.kind)} {ast.count} {_path_text(ast.path)}"
+    if isinstance(ast, Present):
+        return f"its {_path_text(ast.path)} shall include {_short(ast.value)}"
+    if isinstance(ast, Range):
+        return f"its {_path_text(ast.path)} shall be between {ast.lo} and {ast.hi}"
+    if isinstance(ast, Fixed):
+        return f"its {_path_text(ast.path)} shall be {_short(ast.value)}"
+    if isinstance(ast, PathType):
+        return f"its {_path_text(ast.path)} {_type_body(ast)}"
+    if isinstance(ast, Pattern):
+        return f"its {_path_text(ast.path)} shall match `{ast.regex}`{_flag_suffix(ast.flags)}"
+    return ""
+
+
+def constraint_to_prose(ast: Constraint | None, subject: str) -> str:  # noqa: PLR0911
     """Render an AST node as a human-readable English sentence for documentation.
 
-    *subject* names whatever the constraint hangs off: the class for a
-    :class:`CondCard`, or the owning property for a property-scoped path.
+    *subject* names whatever the constraint hangs off: the class for a class
+    constraint, or the owning property for a property-scoped path.
     """
-    if isinstance(ast, CondCard):
-        return f"If the {subject} has at least {ast.ante_min} {ast.ante_prop}, it shall also have at least {ast.cons_min} {ast.cons_prop}."
+    if isinstance(ast, Conditional):
+        return f"If {_condition_clause(ast.antecedent, subject)}, then {_requirement_clause(ast.consequent)}."
+    if isinstance(ast, Cardinality):
+        return f"The {subject} shall have {_rel_word(ast.kind)} {ast.count} {_path_text(ast.path)}."
+    if isinstance(ast, Present):
+        return f"The {subject}'s {_path_text(ast.path)} shall include {_short(ast.value)}."
     if isinstance(ast, PathType):
-        path_text = "'s ".join(_render_terms(ast.path))
-        pos = _join_or(tuple(_render_terms(ast.positives))) if ast.positives else ""
-        neg = _join_or(tuple(_render_terms(ast.negatives))) if ast.negatives else ""
-        if pos and neg:
-            body = f"shall be of type {pos}, and not {neg}"
-        elif neg:
-            body = f"shall not be of type {neg}"
-        else:
-            body = f"shall be of type {pos}"
-        return f"Each {path_text} {body}."
+        return f"Each {_path_text(ast.path)} {_type_body(ast)}."
     if isinstance(ast, Pattern):
-        path_text = "'s ".join(_render_terms(ast.path))
-        if "i" in ast.flags:
-            suffix = " (case-insensitive)"
-        elif ast.flags:
-            suffix = f" (flags: {ast.flags})"
-        else:
-            suffix = ""
-        return f"Each {path_text} shall match `{ast.regex}`{suffix}."
+        return f"Each {_path_text(ast.path)} shall match `{ast.regex}`{_flag_suffix(ast.flags)}."
     if isinstance(ast, Range):
-        path_text = "'s ".join(_render_terms(ast.path))
-        return f"Each {path_text} shall be between {ast.lo} and {ast.hi}."
+        return f"Each {_path_text(ast.path)} shall be between {ast.lo} and {ast.hi}."
     if isinstance(ast, Fixed):
-        path_text = "'s ".join(_render_terms(ast.path))
-        return f"The {path_text} shall be {_short(ast.value)}."
+        return f"The {_path_text(ast.path)} shall be {_short(ast.value)}."
     return ""
 
 
@@ -255,6 +338,8 @@ def prepend_path(ast: Constraint | None, hop: str) -> Constraint | None:
         return Range(path=(hop, *ast.path), lo=ast.lo, hi=ast.hi)
     if isinstance(ast, Fixed):
         return Fixed(path=(hop, *ast.path), value=ast.value)
+    if isinstance(ast, Present):
+        return Present(path=(hop, *ast.path), value=ast.value)
     return None
 
 

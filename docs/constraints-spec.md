@@ -36,7 +36,7 @@ authored.
 ## Tiers
 
 1. **Predicates** — `type` (class), `matches` (pattern), `in` (numeric range),
-   `=` (fixed value). Each scopes the node(s) reached by a property path.
+   `is` (fixed value). Each scopes the node(s) reached by a property path.
 2. **`if … then …`** — a condition predicate implies a consequent predicate
    (incl. cardinality and value-presence).
 3. **Vocabulary-driven** — a vocabulary entry carries a constraint
@@ -65,7 +65,7 @@ predicate   = type-scope | pattern | range | fixed | card | present ;
 type-scope  = path ("type" | "not" "type") class-list ;
 pattern     = path "matches" regex [ "flags" letters ] ;   (* letters: i, m, s, x (sh:flags) *)
 range       = path "in" number ".." number ;
-fixed       = path "=" term ;
+fixed       = path "is" term ;
 card        = prop ("min" | "max") int ;
 present     = path "has" term ;
 
@@ -96,7 +96,7 @@ The conformance block is structured YAML (`forEach`/`as`/`exists`/`count`/`where
   `from`/`to` classes) resolve bare in the file's namespace; qualify for
   cross-namespace.
 - **Endpoint kind.** A `type` path must end at an object property (its values
-  are nodes — `sh:class`); a `matches` / `in` / `=` path must end at a
+  are nodes — `sh:class`); a `matches` / `in` / `is` path must end at a
   datatype-valued property (its values are literals — `sh:pattern` /
   `sh:minInclusive` / `sh:hasValue`). A datatype range on a non-final hop is an
   error.
@@ -110,7 +110,7 @@ One renderer. Terms show local names, falling back to qualified on collision.
 | type (pos) | `Each <path> shall be of type A, B, or C.` |
 | type (neg) | `Each <path> shall not be of type A.` |
 | type (mixed) | `Each <path> shall be of type A or B, and not C.` |
-| pattern | `Each <path> shall match `<regex>`.` |
+| pattern | `Each <path> shall match`<regex>`.` |
 | range | `Each <path> shall be between M and N.` |
 | fixed | `The <path> shall be <value>.` |
 | if/then | `If <cond>, then <consequent>.` |
@@ -127,6 +127,7 @@ prefix for brevity. SPDX deep links target `develop` and are best-effort.
 ## Tier 1 — predicates
 
 ### 1. Type-scope (positive)
+
 - **Syntax:** `from type /Security/Vulnerability`
 - **Section/File:** `## Constraints` · [Security/Classes/VulnAssessmentRelationship.md][m-vulnassess]
 - **Provenance:** authored (new)
@@ -135,6 +136,7 @@ prefix for brevity. SPDX deep links target `develop` and are best-effort.
 - **SHACL:** `sh:property [ sh:path :from ; sh:class :Vulnerability ] .`
 
 ### 2. Type-scope (negative)
+
 - **Syntax:** `element type not /Core/SpdxDocument`
 - **Section/File:** `## Constraints` · [Core/Classes/ElementCollection.md][m-elemcoll]
 - **Provenance:** authored (new)
@@ -143,18 +145,21 @@ prefix for brevity. SPDX deep links target `develop` and are best-effort.
 - **SHACL:** `sh:property [ sh:path :element ; sh:not [ sh:class :SpdxDocument ] ] .`
 
 ### 3. Type-scope (path, mixed)
+
 - **Syntax:** `customIdToLicense -> elementValue type /ExpandedLicensing/CustomLicense, /ExpandedLicensing/CustomLicenseAddition, SimpleLicensingText`
 - **Section/File:** `## Constraints` · [SimpleLicensing/Properties/customIdToLicense.md][m-cidtolic] (or [LicenseExpression][m-licexpr] class)
 - **Provenance:** authored (new)
 - **Refs:** [customIdToLicense][m-cidtolic] · [ElementMap][m-elemmap] · [elementValue][m-elemval] · [CustomLicense][m-customlic]
 - **Prose:** *Each customIdToLicense's elementValue shall be of type CustomLicense, CustomLicenseAddition, or SimpleLicensingText.*
 - **SHACL:**
+
 ```turtle
 sh:property [ sh:path ( :customIdToLicense :elementValue ) ;
     sh:or ( [ sh:class :CustomLicense ] [ sh:class :CustomLicenseAddition ] [ sh:class :SimpleLicensingText ] ) ] .
 ```
 
 ### 4. Pattern
+
 A `matches` predicate constrains a **literal** value (the path must end at a
 datatype-valued property). An optional `flags` clause maps to `sh:flags`
 (`i` case-insensitive, `m`, `s`, `x`).
@@ -167,6 +172,7 @@ datatype-valued property). An optional `flags` clause maps to `sh:flags`
 - **SHACL:** `sh:property [ sh:path :packageVerificationCodeExcludedFile ; sh:pattern "^\\./" ] .`
 
 #### 4b. Pattern over a path, case-insensitive (`customIdToLicense -> key`)
+
 The `ElementMap` `key` reached through `customIdToLicense` is a license-expression
 reference, so it must begin with `LicenseRef-` or `AdditionRef-` — and the whole
 license expression is case-insensitive.
@@ -177,12 +183,14 @@ license expression is case-insensitive.
 - **Refs:** [customIdToLicense][m-cidtolic] · [ElementMap][m-elemmap] · [key][m-key]
 - **Prose:** *Each customIdToLicense's key shall match `^(LicenseRef-|AdditionRef-)` (case-insensitive).*
 - **SHACL:**
+
 ```turtle
 sh:property [ sh:path ( :customIdToLicense :key ) ;
     sh:pattern "^(LicenseRef-|AdditionRef-)" ; sh:flags "i" ] .
 ```
 
 ### 5. Numeric range
+
 - **Syntax:** `cvssScore in 0..10` · `epssPercentile in 0..1`
 - **Section/File:** `## Constraints` · [Security/Classes/CvssV3VulnAssessmentRelationship.md][m-cvss3], [EpssVulnAssessmentRelationship][m-epss]
 - **Provenance:** authored (new)
@@ -191,7 +199,8 @@ sh:property [ sh:path ( :customIdToLicense :key ) ;
 - **SHACL:** `sh:property [ sh:path :cvssScore ; sh:minInclusive 0 ; sh:maxInclusive 10 ] .`
 
 ### 6. Fixed value
-- **Syntax:** `relationshipType = hasConcludedLicense`
+
+- **Syntax:** `relationshipType is hasConcludedLicense`
 - **Section/File:** `## Constraints` · [Security/Classes/VexAffectedVulnAssessmentRelationship.md][m-vexaff]
 - **Provenance:** authored (new)
 - **Refs:** [VexAffectedVulnAssessmentRelationship][m-vexaff] · [relationshipType][m-reltype] · [issue #987][i987]
@@ -201,36 +210,42 @@ sh:property [ sh:path ( :customIdToLicense :key ) ;
 ## Tier 2 — `if … then …`
 
 ### 7. Conditional cardinality
+
 - **Syntax:** `if element min 1 then rootElement min 1`
 - **Section/File:** `## Constraints` · [Core/Classes/ElementCollection.md][m-elemcoll]
 - **Provenance:** authored (new)
 - **Refs:** [ElementCollection][m-elemcoll] · [element][m-element] · [rootElement][m-rootelem]
 - **Prose:** *If the ElementCollection has at least 1 element, it shall also have at least 1 rootElement.*
 - **SHACL:**
+
 ```turtle
 sh:or ( [ sh:property [ sh:path :element ; sh:maxCount 0 ] ]
         [ sh:property [ sh:path :rootElement ; sh:minCount 1 ] ] ) .
 ```
 
 ### 8. Value-presence → cardinality
+
 - **Syntax:** `if to has /Core/NoneElement then to max 1`
 - **Section/File:** `## Constraints` · [Core/Classes/Relationship.md][m-rel]
 - **Provenance:** authored (new)
 - **Refs:** [Relationship][m-rel] · [to][m-to] · [NoneElement][m-none] · [issue #981][i981]
 - **Prose:** *If to includes NoneElement, to shall have at most 1 value.*
 - **SHACL:**
+
 ```turtle
 sh:or ( [ sh:not [ sh:property [ sh:path :to ; sh:hasValue :NoneElement ] ] ]
         [ sh:property [ sh:path :to ; sh:maxCount 1 ] ] ) .
 ```
 
 ### 9. Conditional over predicates
-- **Syntax:** `if cvssScore in 7.0..8.9 then cvssSeverity = high`
+
+- **Syntax:** `if cvssScore in 7.0..8.9 then cvssSeverity is high`
 - **Section/File:** `## Constraints` · [Security/Classes/CvssV3VulnAssessmentRelationship.md][m-cvss3]
 - **Provenance:** authored (new) — one line per CVSS band
 - **Refs:** [CvssV3VulnAssessmentRelationship][m-cvss3] · [issue #988][i988]
 - **Prose:** *If cvssScore is between 7.0 and 8.9, then cvssSeverity shall be high.*
 - **SHACL:**
+
 ```turtle
 sh:or ( [ sh:not [ sh:property [ sh:path :cvssScore ; sh:minInclusive 7.0 ; sh:maxInclusive 8.9 ] ] ]
         [ sh:property [ sh:path :cvssSeverity ; sh:hasValue :high ] ] ) .
@@ -239,17 +254,21 @@ sh:or ( [ sh:not [ sh:property [ sh:path :cvssScore ; sh:minInclusive 7.0 ; sh:m
 ## Tier 3 — vocabulary-driven
 
 ### 10. Relationship `from` / `to`
+
 - **Syntax** (per vocabulary entry):
+
 ```yaml
 - amendedBy:
   - from: Element, not /Core/SpdxDocument
   - to: /Core/Annotation
 ```
+
 - **Section/File:** `## Entries` · [Core/Vocabularies/RelationshipType.md][m-reltypevocab]
 - **Provenance:** authored — and the **only** rule with an implemented (heuristic) `specmd migrate` assist from legacy prose; migrate output is reviewed/edited, not exact
 - **Refs:** [RelationshipType][m-reltypevocab] · [Relationship][m-rel] · [from][m-from] · [to][m-to]
 - **Prose:** *An amendedBy relationship's from shall be of type Element and not SpdxDocument; its to shall be of type Annotation.*
 - **SHACL:**
+
 ```turtle
 :Relationship sh:or (
     [ sh:not [ sh:property [ sh:path :relationshipType ; sh:hasValue :amendedBy ] ] ]
@@ -258,21 +277,26 @@ sh:or ( [ sh:not [ sh:property [ sh:path :cvssScore ; sh:minInclusive 7.0 ; sh:m
 ```
 
 ### 11. Per-entry `pattern` + selector binding
+
 - **Syntax** (entry pattern + class binding):
+
 ```yaml
 # ExternalIdentifierType  ## Entries
 - cve:
   - pattern: `^CVE-\d{4}-\d{4,}$`
 ```
+
 ```markdown
 # ExternalIdentifier  ## Constraints
 - identifier matches externalIdentifierType
 ```
+
 - **Section/File:** `## Entries` · [Core/Vocabularies/ExternalIdentifierType.md][m-extidtype] **and** `## Constraints` · [Core/Classes/ExternalIdentifier.md][m-extid]
 - **Provenance:** authored (new entry field + binding)
 - **Refs:** [ExternalIdentifier][m-extid] · [ExternalIdentifierType][m-extidtype] · [ContentIdentifier][m-contentid] · [issue #989][i989] · [issue #986][i986]
 - **Prose:** *Each identifier shall match the pattern of its externalIdentifierType.*
 - **SHACL** (one `sh:or` per entry):
+
 ```turtle
 :ExternalIdentifier sh:or (
     [ sh:not [ sh:property [ sh:path :externalIdentifierType ; sh:hasValue :cve ] ] ]
@@ -282,7 +306,9 @@ sh:or ( [ sh:not [ sh:property [ sh:path :cvssScore ; sh:minInclusive 7.0 ; sh:m
 ## Tier 4 — conformance
 
 ### 12. Profile conformance (`forEach` / `exists`)
+
 - **Syntax** (activation implicit — it is this profile's conformance block):
+
 ```yaml
 - forEach: /Software/SoftwareArtifact
   as: artifact
@@ -293,11 +319,13 @@ sh:or ( [ sh:not [ sh:property [ sh:path :cvssScore ; sh:minInclusive 7.0 ; sh:m
     - from: artifact
     - to: /SimpleLicensing/AnyLicenseInfo
 ```
+
 - **Section/File:** `## Profile conformance` · [Licensing/Licensing.md][m-licensing]
 - **Provenance:** authored (legacy = prose in `## Profile conformance`, parsed-but-unused today)
 - **Refs:** [Licensing namespace][m-licensing] · [SoftwareArtifact][m-swartifact] · [Relationship][m-rel] · [AnyLicenseInfo][m-anylic] · [profileConformance][m-profconf] · [ElementCollection][m-elemcoll]
 - **Prose:** *For every SoftwareArtifact in a collection conforming to this profile, there shall exist exactly one Relationship of type hasConcludedLicense with that artifact as its from and an AnyLicenseInfo as its to.*
 - **SHACL:**
+
 ```turtle
 :LicensingConformanceShape a sh:NodeShape ;
   sh:targetClass :ElementCollection ;
@@ -428,7 +456,7 @@ constraints that resolve to the identical AST collapse.
 
 SpecMD emits named individuals (`Individuals/*.md`) into the same graph the
 SHACL shapes validate, so **a class constraint must hold for the model's own
-individuals of that class (and its subclasses)**. An unconditional `=` / `in` /
+individuals of that class (and its subclasses)**. An unconditional `is` / `in` /
 `matches` on a class is violated by any individual of that class that lacks the
 value.
 

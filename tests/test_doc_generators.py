@@ -18,7 +18,7 @@ from specmd.generate.singlefile import gen_singlefile
 from specmd.generate.tex import tex_escape
 from specmd.parse.model import Model
 
-COND_CARD_PROSE = "If the Collection has at least 1 element, it shall also have at least 1 rootElement."
+COND_CARD_PROSE = "If the Collection has at least 1 element, then it shall have at least 1 rootElement."
 NEGATED_PROSE = "Each element shall not be of type Agent."
 PATH_TYPE_PROSE = "Each customIdToLicense's elementValue shall be of type Tool or ElementMap."
 

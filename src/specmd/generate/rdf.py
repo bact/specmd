@@ -18,7 +18,7 @@ from rdflib.collection import Collection
 from rdflib.namespace import DCTERMS, OWL, RDF, RDFS, SH, SKOS, VANN
 from rdflib.tools.rdf2dot import rdf2dot
 
-from specmd.constraints import CondCard, Fixed, PathType, Pattern, Range, parse_constraint, prepend_path
+from specmd.constraints import Cardinality, Conditional, Fixed, PathType, Pattern, Present, Range, parse_constraint, prepend_path
 from specmd.parse.model import PropertyNature
 
 if TYPE_CHECKING:
@@ -433,28 +433,40 @@ def _emit_property_constraints(model: Model, g: Graph, c_node: URIRef, prop: Pro
             logger.warning("Property %s: only path constraints are supported on a property, got %r", prop.iri, expr)
 
 
-def _emit_cond_card(model: Model, g: Graph, c_node: URIRef, ns_name: str, ast: CondCard) -> None:
-    """Emit ``sh:or`` encoding "if A >= m then B >= n"  ==  (A <= m-1) OR (B >= n)."""
-    if ast.ante_min < 1:
-        logger.warning("Constraint antecedent min must be >= 1 (got %d for %r)", ast.ante_min, ast.ante_prop)
+def _emit_cardinality(model: Model, g: Graph, c_node: URIRef | BNode, ns_name: str, ast: Cardinality) -> None:
+    """Emit a property shape with ``sh:minCount``/``sh:maxCount`` on *ast.path*."""
+    hop_iris = [_resolve_prop_iri(model, ns_name, h) for h in ast.path]
+    if any(i is None for i in hop_iris):
         return
-    ante_iri = _resolve_prop_iri(model, ns_name, ast.ante_prop)
-    cons_iri = _resolve_prop_iri(model, ns_name, ast.cons_prop)
-    if not ante_iri or not cons_iri:
+    pshape = BNode()
+    g.add((c_node, SH.property, pshape))
+    _emit_path(g, pshape, hop_iris)  # type: ignore[arg-type]
+    g.add((pshape, SH.minCount if ast.kind == "min" else SH.maxCount, Literal(ast.count)))
+
+
+def _emit_present(model: Model, g: Graph, c_node: URIRef | BNode, ns_name: str, ast: Present) -> None:
+    """Emit a property shape requiring *ast.path* to include *ast.value* (``sh:hasValue``)."""
+    hop_iris = [_resolve_prop_iri(model, ns_name, h) for h in ast.path]
+    value_iri = _resolve_value_iri(model, ns_name, ast.path, ast.value)
+    if any(i is None for i in hop_iris) or value_iri is None:
         return
+    pshape = BNode()
+    g.add((c_node, SH.property, pshape))
+    _emit_path(g, pshape, hop_iris)  # type: ignore[arg-type]
+    g.add((pshape, SH["hasValue"], URIRef(value_iri)))
+
+
+def _emit_conditional(model: Model, g: Graph, c_node: URIRef | BNode, ns_name: str, ast: Conditional) -> None:
+    """Emit ``if A then B`` as ``sh:or ( [ sh:not [A] ] [B] )``."""
+    ante_shape = BNode()
+    _emit_constraint(model, g, ante_shape, ns_name, ast.antecedent)
+    not_branch = BNode()
+    g.add((not_branch, SH["not"], ante_shape))
+    cons_branch = BNode()
+    _emit_constraint(model, g, cons_branch, ns_name, ast.consequent)
     or_list = Collection(g, None)  # type: ignore[arg-type]
-    b1 = BNode()
-    ps1 = BNode()
-    g.add((b1, SH.property, ps1))
-    g.add((ps1, SH.path, URIRef(ante_iri)))
-    g.add((ps1, SH.maxCount, Literal(ast.ante_min - 1)))
-    b2 = BNode()
-    ps2 = BNode()
-    g.add((b2, SH.property, ps2))
-    g.add((ps2, SH.path, URIRef(cons_iri)))
-    g.add((ps2, SH.minCount, Literal(ast.cons_min)))
-    or_list.append(b1)
-    or_list.append(b2)
+    or_list.append(not_branch)
+    or_list.append(cons_branch)
     g.add((c_node, SH["or"], or_list.uri))
 
 
@@ -482,7 +494,7 @@ def _emit_path(g: Graph, pshape: BNode, hop_iris: list[str]) -> None:
         g.add((pshape, SH.path, path_list.uri))
 
 
-def _emit_path_type(model: Model, g: Graph, c_node: URIRef, ns_name: str, ast: PathType) -> None:
+def _emit_path_type(model: Model, g: Graph, c_node: URIRef | BNode, ns_name: str, ast: PathType) -> None:
     """Emit a property shape restricting the type of nodes reached by *ast.path*.
 
     Positive classes go on the property shape (``sh:class`` / ``sh:or``); each
@@ -502,11 +514,11 @@ def _emit_path_type(model: Model, g: Graph, c_node: URIRef, ns_name: str, ast: P
         _emit_class_choice(g, pshape, pos_iris)  # type: ignore[arg-type]
     for ni in neg_iris:
         not_node = BNode()
-        g.add((not_node, SH["class"], URIRef(ni)))
+        g.add((not_node, SH["class"], URIRef(ni)))  # type: ignore[arg-type]
         g.add((pshape, SH["not"], not_node))
 
 
-def _emit_pattern(model: Model, g: Graph, c_node: URIRef, ns_name: str, ast: Pattern) -> None:
+def _emit_pattern(model: Model, g: Graph, c_node: URIRef | BNode, ns_name: str, ast: Pattern) -> None:
     """Emit a property shape constraining the literal reached by *ast.path* to ``sh:pattern``."""
     hop_iris = [_resolve_prop_iri(model, ns_name, h) for h in ast.path]
     if any(i is None for i in hop_iris):
@@ -524,7 +536,7 @@ def _numeric_literal(s: str) -> Literal:
     return Literal(Decimal(s)) if "." in s else Literal(int(s))
 
 
-def _emit_range(model: Model, g: Graph, c_node: URIRef, ns_name: str, ast: Range) -> None:
+def _emit_range(model: Model, g: Graph, c_node: URIRef | BNode, ns_name: str, ast: Range) -> None:
     """Emit a property shape bounding the numeric literal reached by *ast.path* (inclusive)."""
     hop_iris = [_resolve_prop_iri(model, ns_name, h) for h in ast.path]
     if any(i is None for i in hop_iris):
@@ -555,7 +567,7 @@ def _resolve_value_iri(model: Model, ns_name: str, path: tuple[str, ...], value:
     return f"{vocab.iri}/{value}"
 
 
-def _emit_fixed(model: Model, g: Graph, c_node: URIRef, ns_name: str, ast: Fixed) -> None:
+def _emit_fixed(model: Model, g: Graph, c_node: URIRef | BNode, ns_name: str, ast: Fixed) -> None:
     """Emit a property shape pinning the node reached by *ast.path* to a fixed value (``sh:hasValue``)."""
     hop_iris = [_resolve_prop_iri(model, ns_name, h) for h in ast.path]
     value_iri = _resolve_value_iri(model, ns_name, ast.path, ast.value)
@@ -567,10 +579,14 @@ def _emit_fixed(model: Model, g: Graph, c_node: URIRef, ns_name: str, ast: Fixed
     g.add((pshape, SH["hasValue"], URIRef(value_iri)))
 
 
-def _emit_constraint(model: Model, g: Graph, c_node: URIRef, ns_name: str, ast: object) -> None:
+def _emit_constraint(model: Model, g: Graph, c_node: URIRef | BNode, ns_name: str, ast: object) -> None:
     """Dispatch a parsed constraint to its SHACL emitter."""
-    if isinstance(ast, CondCard):
-        _emit_cond_card(model, g, c_node, ns_name, ast)
+    if isinstance(ast, Conditional):
+        _emit_conditional(model, g, c_node, ns_name, ast)
+    elif isinstance(ast, Cardinality):
+        _emit_cardinality(model, g, c_node, ns_name, ast)
+    elif isinstance(ast, Present):
+        _emit_present(model, g, c_node, ns_name, ast)
     elif isinstance(ast, PathType):
         _emit_path_type(model, g, c_node, ns_name, ast)
     elif isinstance(ast, Pattern):

@@ -27,3 +27,7 @@ Relationship connects a source element to one or more target elements with a typ
   - maxCount: 1
 - to:
   - minCount: 0
+
+## Constraints
+
+- if to has /Core/NoneElement then to max 1

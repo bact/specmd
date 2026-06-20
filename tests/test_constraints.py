@@ -4,18 +4,31 @@
 
 from __future__ import annotations
 
-from specmd.constraints import CondCard, Fixed, PathType, Pattern, Range, constraint_to_prose, parse_constraint
+from specmd.constraints import Cardinality, Conditional, Fixed, PathType, Pattern, Present, Range, constraint_to_prose, parse_constraint
 from specmd.parse.markdown import ConstraintsSection
 
 
 class TestParseConstraint:
     def test_conditional_cardinality(self) -> None:
         ast = parse_constraint("if element min 1 then rootElement min 1")
-        assert ast == CondCard(ante_prop="element", ante_min=1, cons_prop="rootElement", cons_min=1)
+        assert ast == Conditional(
+            antecedent=Cardinality(path=("element",), kind="min", count=1),
+            consequent=Cardinality(path=("rootElement",), kind="min", count=1),
+        )
 
-    def test_conditional_with_larger_counts(self) -> None:
-        ast = parse_constraint("if  foo   min 2 then bar min 3")
-        assert ast == CondCard(ante_prop="foo", ante_min=2, cons_prop="bar", cons_min=3)
+    def test_conditional_value_presence(self) -> None:
+        ast = parse_constraint("if to has /Core/NoneElement then to max 1")
+        assert ast == Conditional(
+            antecedent=Present(path=("to",), value="/Core/NoneElement"),
+            consequent=Cardinality(path=("to",), kind="max", count=1),
+        )
+
+    def test_conditional_range_then_fixed(self) -> None:
+        ast = parse_constraint("if cvssScore in 7.0..8.9 then cvssSeverity is high")
+        assert ast == Conditional(
+            antecedent=Range(path=("cvssScore",), lo="7.0", hi="8.9"),
+            consequent=Fixed(path=("cvssSeverity",), value="high"),
+        )
 
     def test_unrecognised_returns_none(self) -> None:
         assert parse_constraint("element shall be unique") is None
@@ -68,14 +81,18 @@ class TestParseConstraint:
         assert parse_constraint("cvssScore in 7.0..8.9") == Range(path=("cvssScore",), lo="7.0", hi="8.9")
 
     def test_fixed_value(self) -> None:
-        assert parse_constraint("relationshipType = hasConcludedLicense") == Fixed(path=("relationshipType",), value="hasConcludedLicense")
+        assert parse_constraint("relationshipType is hasConcludedLicense") == Fixed(path=("relationshipType",), value="hasConcludedLicense")
 
 
 class TestConstraintProse:
     def test_cond_card_prose(self) -> None:
         ast = parse_constraint("if element min 1 then rootElement min 1")
         prose = constraint_to_prose(ast, "ElementCollection")
-        assert prose == ("If the ElementCollection has at least 1 element, it shall also have at least 1 rootElement.")
+        assert prose == "If the ElementCollection has at least 1 element, then it shall have at least 1 rootElement."
+
+    def test_conditional_presence_prose(self) -> None:
+        ast = parse_constraint("if to has /Core/NoneElement then to max 1")
+        assert constraint_to_prose(ast, "Relationship") == ("If the Relationship's to includes NoneElement, then it shall have at most 1 to.")
 
     def test_none_renders_empty(self) -> None:
         assert constraint_to_prose(None, "Whatever") == ""
@@ -105,7 +122,7 @@ class TestConstraintProse:
         assert constraint_to_prose(ast, "Anything") == "Each cvssScore shall be between 0 and 10."
 
     def test_fixed_prose(self) -> None:
-        ast = parse_constraint("relationshipType = /Core/RelationshipType/hasConcludedLicense")
+        ast = parse_constraint("relationshipType is /Core/RelationshipType/hasConcludedLicense")
         assert constraint_to_prose(ast, "Anything") == "The relationshipType shall be hasConcludedLicense."
 
     def test_qualified_terms_shortened_in_prose(self) -> None:
