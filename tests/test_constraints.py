@@ -4,7 +4,18 @@
 
 from __future__ import annotations
 
-from specmd.constraints import Cardinality, Conditional, Fixed, PathType, Pattern, Present, Range, constraint_to_prose, parse_constraint
+from specmd.constraints import (
+    Cardinality,
+    Conditional,
+    Fixed,
+    PathType,
+    Pattern,
+    Present,
+    Range,
+    SelectorPattern,
+    constraint_to_prose,
+    parse_constraint,
+)
 from specmd.parse.markdown import ConstraintsSection
 
 
@@ -83,6 +94,14 @@ class TestParseConstraint:
     def test_fixed_value(self) -> None:
         assert parse_constraint("relationshipType is hasConcludedLicense") == Fixed(path=("relationshipType",), value="hasConcludedLicense")
 
+    def test_selector_pattern(self) -> None:
+        ast = parse_constraint("identifier matches externalIdentifierType")
+        assert ast == SelectorPattern(path=("identifier",), selector="externalIdentifierType")
+
+    def test_selector_pattern_not_confused_with_literal(self) -> None:
+        # A backtick arg is a literal Pattern, not a selector binding.
+        assert isinstance(parse_constraint("identifier matches `^x`"), Pattern)
+
 
 class TestConstraintProse:
     def test_cond_card_prose(self) -> None:
@@ -124,6 +143,10 @@ class TestConstraintProse:
     def test_fixed_prose(self) -> None:
         ast = parse_constraint("relationshipType is /Core/RelationshipType/hasConcludedLicense")
         assert constraint_to_prose(ast, "Anything") == "The relationshipType shall be hasConcludedLicense."
+
+    def test_selector_pattern_prose(self) -> None:
+        ast = parse_constraint("identifier matches externalIdentifierType")
+        assert constraint_to_prose(ast, "ExternalIdentifier") == ("Each identifier shall match the pattern of its externalIdentifierType.")
 
     def test_qualified_terms_shortened_in_prose(self) -> None:
         # Qualified path hops and class names render with their local names only.

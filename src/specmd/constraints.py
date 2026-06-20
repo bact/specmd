@@ -78,6 +78,11 @@ _RE_CARD = re.compile(rf"^(?P<path>{_PATH})\s+(?P<kind>min|max)\s+(?P<count>\d+)
 # ``to has /Core/NoneElement``  (a value-presence predicate)
 _RE_PRESENT = re.compile(rf"^(?P<path>{_PATH})\s+has\s+(?P<value>{_VALUE})$")
 
+# ``identifier matches externalIdentifierType``  (selector binding: the value matches the
+# pattern carried by the entry that *selector* currently has; the selector arg is a bare
+# property, not a backtick regex, which distinguishes it from a literal ``matches``).
+_RE_MATCHES_SELECTOR = re.compile(rf"^(?P<path>{_PATH})\s+matches\s+(?P<selector>{_TERM})$")
+
 
 @dataclass(frozen=True)
 class Cardinality:
@@ -147,7 +152,18 @@ class Conditional:
     consequent: Predicate
 
 
-Constraint = Predicate | Conditional
+@dataclass(frozen=True)
+class SelectorPattern:
+    """The literal at *path* must match the ``pattern`` of the vocabulary entry that *selector* has.
+
+    Expands per entry of the selector's range vocabulary that declares a ``pattern``.
+    """
+
+    path: tuple[str, ...]
+    selector: str
+
+
+Constraint = Predicate | Conditional | SelectorPattern
 
 
 def parse_constraint(expr: str) -> Constraint | None:
@@ -166,9 +182,15 @@ def parse_constraint(expr: str) -> Constraint | None:
             return None
         return Conditional(antecedent=antecedent, consequent=consequent)
     pred = _parse_predicate(expr)
-    if pred is None:
-        logger.warning("Unrecognised constraint expression: %r", expr)
-    return pred
+    if pred is not None:
+        return pred
+    # A selector binding (``path matches <selectorProp>``) has no backtick, so the literal
+    # ``matches`` predicate above did not claim it.
+    m = _RE_MATCHES_SELECTOR.match(expr)
+    if m:
+        return SelectorPattern(path=_split_path(m.group("path")), selector=m.group("selector"))
+    logger.warning("Unrecognised constraint expression: %r", expr)
+    return None
 
 
 def _parse_predicate(expr: str) -> Predicate | None:  # noqa: PLR0911
@@ -321,6 +343,8 @@ def constraint_to_prose(ast: Constraint | None, subject: str) -> str:  # noqa: P
         return f"Each {_path_text(ast.path)} shall be between {ast.lo} and {ast.hi}."
     if isinstance(ast, Fixed):
         return f"The {_path_text(ast.path)} shall be {_short(ast.value)}."
+    if isinstance(ast, SelectorPattern):
+        return f"Each {_path_text(ast.path)} shall match the pattern of its {_short(ast.selector)}."
     return ""
 
 

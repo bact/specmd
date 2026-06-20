@@ -18,13 +18,13 @@ class TestModelLoading:
         assert model.namespaces[0].name == "Core"
 
     def test_class_count(self, model: Model) -> None:
-        assert len(model.classes) == 7
+        assert len(model.classes) == 8
 
     def test_property_count(self, model: Model) -> None:
-        assert len(model.properties) == 13
+        assert len(model.properties) == 15
 
     def test_vocabulary_count(self, model: Model) -> None:
-        assert len(model.vocabularies) == 3
+        assert len(model.vocabularies) == 4
 
     def test_simple_vocab_is_not_relationship_vocab(self, model: Model) -> None:
         vocab = model.vocabularies["/Core/SupportType"]

@@ -18,7 +18,18 @@ from rdflib.collection import Collection
 from rdflib.namespace import DCTERMS, OWL, RDF, RDFS, SH, SKOS, VANN
 from rdflib.tools.rdf2dot import rdf2dot
 
-from specmd.constraints import Cardinality, Conditional, Fixed, PathType, Pattern, Present, Range, parse_constraint, prepend_path
+from specmd.constraints import (
+    Cardinality,
+    Conditional,
+    Fixed,
+    PathType,
+    Pattern,
+    Present,
+    Range,
+    SelectorPattern,
+    parse_constraint,
+    prepend_path,
+)
 from specmd.parse.model import PropertyNature
 
 if TYPE_CHECKING:
@@ -483,6 +494,16 @@ def _emit_class_choice(g: Graph, node: BNode, cls_iris: list[str]) -> None:
         g.add((node, SH["or"], or_list.uri))
 
 
+def _emit_pos_neg(g: Graph, pshape: BNode, pos_iris: list[str], neg_iris: list[str]) -> None:
+    """Put positive classes on *pshape* (``sh:class``/``sh:or``); each negative as ``sh:not [ sh:class ]``."""
+    if pos_iris:
+        _emit_class_choice(g, pshape, pos_iris)
+    for ni in neg_iris:
+        not_node = BNode()
+        g.add((not_node, SH["class"], URIRef(ni)))
+        g.add((pshape, SH["not"], not_node))
+
+
 def _emit_path(g: Graph, pshape: BNode, hop_iris: list[str]) -> None:
     """Set ``sh:path`` on *pshape*: a plain IRI for one hop, a sequence-path list for many."""
     if len(hop_iris) == 1:
@@ -509,13 +530,7 @@ def _emit_path_type(model: Model, g: Graph, c_node: URIRef | BNode, ns_name: str
     pshape = BNode()
     g.add((c_node, SH.property, pshape))
     _emit_path(g, pshape, hop_iris)  # type: ignore[arg-type]
-
-    if pos_iris:
-        _emit_class_choice(g, pshape, pos_iris)  # type: ignore[arg-type]
-    for ni in neg_iris:
-        not_node = BNode()
-        g.add((not_node, SH["class"], URIRef(ni)))  # type: ignore[arg-type]
-        g.add((pshape, SH["not"], not_node))
+    _emit_pos_neg(g, pshape, pos_iris, neg_iris)  # type: ignore[arg-type]
 
 
 def _emit_pattern(model: Model, g: Graph, c_node: URIRef | BNode, ns_name: str, ast: Pattern) -> None:
@@ -579,10 +594,49 @@ def _emit_fixed(model: Model, g: Graph, c_node: URIRef | BNode, ns_name: str, as
     g.add((pshape, SH["hasValue"], URIRef(value_iri)))
 
 
+def _emit_selector_pattern(model: Model, g: Graph, c_node: URIRef | BNode, ns_name: str, ast: SelectorPattern) -> None:
+    """Emit, per entry of the selector's range vocabulary that has a ``pattern``, a guarded
+    ``sh:or ( [ sh:not [ selector hasValue entry ] ] [ path sh:pattern entry-pattern ] )``."""
+    hop_iris = [_resolve_prop_iri(model, ns_name, h) for h in ast.path]
+    sel_iri = _resolve_prop_iri(model, ns_name, ast.selector)
+    if any(i is None for i in hop_iris) or sel_iri is None:
+        return
+    sel_fq = ast.selector if ast.selector.startswith("/") else f"/{ns_name}/{ast.selector}"
+    sel_prop = model.properties.get(sel_fq)
+    rng = sel_prop.metadata.get("range", "") if sel_prop else ""
+    vocab_fq = rng if rng.startswith("/") else f"/{sel_prop.ns.name}/{rng}" if sel_prop else ""
+    vocab = model.vocabularies.get(vocab_fq)
+    if vocab is None:
+        logger.warning("matches-selector %r: %s has no vocabulary range", ast.selector, sel_fq)
+        return
+    for entry_name, entry in vocab.entries.items():
+        pattern = entry.get("pattern")
+        if not pattern:
+            continue
+        antecedent = BNode()
+        ant_ps = BNode()
+        g.add((antecedent, SH.property, ant_ps))
+        g.add((ant_ps, SH.path, URIRef(sel_iri)))
+        g.add((ant_ps, SH["hasValue"], URIRef(f"{vocab.iri}/{entry_name}")))
+        not_branch = BNode()
+        g.add((not_branch, SH["not"], antecedent))
+        consequent = BNode()
+        cons_ps = BNode()
+        g.add((consequent, SH.property, cons_ps))
+        _emit_path(g, cons_ps, hop_iris)  # type: ignore[arg-type]
+        g.add((cons_ps, SH["pattern"], Literal(str(pattern))))
+        or_list = Collection(g, None)  # type: ignore[arg-type]
+        or_list.append(not_branch)
+        or_list.append(consequent)
+        g.add((c_node, SH["or"], or_list.uri))
+
+
 def _emit_constraint(model: Model, g: Graph, c_node: URIRef | BNode, ns_name: str, ast: object) -> None:
     """Dispatch a parsed constraint to its SHACL emitter."""
     if isinstance(ast, Conditional):
         _emit_conditional(model, g, c_node, ns_name, ast)
+    elif isinstance(ast, SelectorPattern):
+        _emit_selector_pattern(model, g, c_node, ns_name, ast)
     elif isinstance(ast, Cardinality):
         _emit_cardinality(model, g, c_node, ns_name, ast)
     elif isinstance(ast, Present):
@@ -608,36 +662,43 @@ def _gen_class_constraints(model: Model, g: Graph) -> None:
             _emit_constraint(model, g, c_node, c.ns.name, parse_constraint(expr))
 
 
-def _endpoint_class_iris(model: Model, ns_name: str, class_names: list[str]) -> list[str]:
-    """Resolve relationship endpoint classes to IRIs, dropping the universal ``Element`` root.
+def _endpoint_class_iris(model: Model, ns_name: str, class_names: list[str]) -> tuple[list[str], list[str]]:
+    """Resolve relationship endpoint classes to ``(positives, negatives)`` IRIs.
 
-    A class named only ``Element`` is unconstrained (it is the root of the
-    hierarchy and already the range of ``from``/``to``), so it is excluded.
+    Each item may carry a per-item ``not``. A bracket qualifier
+    (``Relationship[relationshipType=…]``) is reduced to its base class. The
+    universal ``Element`` root is dropped (it is already the range of
+    ``from``/``to``).
     """
-    bases = [str(cn).split("[", 1)[0].strip() for cn in class_names]
-    bases = [b for b in bases if b and b != "Element"]
-    iris = [_resolve_class_iri(model, ns_name, b) for b in bases]
-    return [i for i in iris if i is not None]
-
-
-def _emit_endpoint_shape(g: Graph, parent: BNode, prop_iri: str, iris: list[str]) -> None:
-    """Emit ``sh:property [ sh:path <prop> ; <class choice> ]`` on *parent*."""
-    ps = BNode()
-    g.add((parent, SH.property, ps))
-    g.add((ps, SH.path, URIRef(prop_iri)))
-    _emit_class_choice(g, ps, iris)
+    pos: list[str] = []
+    neg: list[str] = []
+    for cn in class_names:
+        raw = str(cn).strip()
+        negated = raw.startswith("not ")
+        if negated:
+            raw = raw[4:].strip()
+        base = raw.split("[", 1)[0].strip()
+        if not base or base == "Element":
+            continue
+        iri = _resolve_class_iri(model, ns_name, base)
+        if iri:
+            (neg if negated else pos).append(iri)
+    return pos, neg
 
 
 def _emit_endpoint(model: Model, g: Graph, parent: BNode, ns_name: str, side: tuple[str, list[str]]) -> bool:
     """Resolve and emit one endpoint shape; return ``True`` when a shape was emitted."""
     prop_name, class_names = side
-    iris = _endpoint_class_iris(model, ns_name, class_names)
-    if not iris:
+    pos, neg = _endpoint_class_iris(model, ns_name, class_names)
+    if not pos and not neg:
         return False
     prop_iri = _resolve_prop_iri(model, ns_name, prop_name)
     if not prop_iri:
         return False
-    _emit_endpoint_shape(g, parent, prop_iri, iris)
+    pshape = BNode()
+    g.add((parent, SH.property, pshape))
+    g.add((pshape, SH.path, URIRef(prop_iri)))
+    _emit_pos_neg(g, pshape, pos, neg)
     return True
 
 

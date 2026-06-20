@@ -19,6 +19,8 @@ from typing import TYPE_CHECKING
 
 import yaml
 
+from specmd.parse.markdown import _RE_BACKTICK_VALUE, _backtick_to_single_quoted
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -57,6 +59,11 @@ def _check_sections(content: str) -> list[tuple[str, str]]:
         body = m.group(2).strip()
         if not body:
             continue
+        if section_name == "Entries":
+            # Normalise specmd's backtick-quoted scalars (e.g. ``- pattern: `regex` ``) to
+            # YAML strings, as the parser does, so they are not mis-flagged. Other unsafe
+            # scalars (raw ``[`` / ``{`` / bare ``:``) are still reported.
+            body = _RE_BACKTICK_VALUE.sub(_backtick_to_single_quoted, body)
         try:
             yaml.safe_load(body)
         except yaml.YAMLError as exc:

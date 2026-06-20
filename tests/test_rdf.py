@@ -400,6 +400,34 @@ class TestPathTypeConstraint:
         assert URIRef(CORE + "ElementMap") in allowed
 
 
+class TestSelectorPattern:
+    """``identifier matches externalIdentifierType`` -> per-entry guarded ``sh:pattern``."""
+
+    def test_pattern_per_entry(self, rdf_graph: Graph) -> None:
+        from rdflib.collection import Collection as RDFList
+
+        ei = URIRef(CORE + "ExternalIdentifier")
+        cve = URIRef(CORE + "ExternalIdentifierType/cve")
+        identifier = URIRef(CORE + "identifier")
+        found = False
+        for or_list in rdf_graph.objects(ei, SH["or"]):
+            branches = list(RDFList(rdf_graph, or_list))
+            keys_off_cve = any(
+                (ps, SH["hasValue"], cve) in rdf_graph
+                for b in branches
+                for n in rdf_graph.objects(b, SH["not"])
+                for ps in rdf_graph.objects(n, SH.property)
+            )
+            has_identifier_pattern = any(
+                identifier in set(rdf_graph.objects(ps, SH.path)) and list(rdf_graph.objects(ps, SH["pattern"]))
+                for b in branches
+                for ps in rdf_graph.objects(b, SH.property)
+            )
+            if keys_off_cve and has_identifier_pattern:
+                found = True
+        assert found, "no per-entry sh:pattern guarded by externalIdentifierType = cve"
+
+
 class TestPatternConstraint:
     """``<path> matches `regex` flags i`` -> sequence path + ``sh:pattern`` + ``sh:flags``."""
 
@@ -469,8 +497,9 @@ class TestRelationshipConstraints:
                 target = branches
         assert target is not None, "no relationship constraint scoped to toolUsedBy"
 
-        # The consequent branch must require from -> Tool and to -> Agent.
+        # The consequent branch must require from -> Tool, to -> Agent, and to NOT Collection.
         endpoints = {}
+        to_neg = set()
         for b in target:
             for ps in rdf_graph.objects(b, SH.property):
                 paths = set(rdf_graph.objects(ps, SH.path))
@@ -479,5 +508,7 @@ class TestRelationshipConstraints:
                     endpoints["from"] = classes
                 if URIRef(CORE + "to") in paths:
                     endpoints["to"] = classes
+                    to_neg = {cl for n in rdf_graph.objects(ps, SH["not"]) for cl in rdf_graph.objects(n, SH["class"])}
         assert endpoints.get("from") == {URIRef(CORE + "Tool")}
         assert endpoints.get("to") == {URIRef(CORE + "Agent")}
+        assert to_neg == {URIRef(CORE + "Collection")}

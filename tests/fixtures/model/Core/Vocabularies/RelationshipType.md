@@ -43,5 +43,7 @@ RelationshipType is a vocabulary of directed relationships between software elem
 - toolUsedBy:
   - description: The from Tool is used by the to Agent.
   - from: Tool
-  - to: Agent
+  - to:
+    - Agent
+    - not Collection
   - relationshipClass: Relationship
