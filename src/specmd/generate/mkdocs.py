@@ -34,7 +34,6 @@ def gen_mkdocs(model: Model, outpath: Path, cfg: Any) -> None:
     jinja.globals["type_link"] = lambda x, showshort=False: type_link(x, model, showshort=showshort)
     jinja.globals["not_none"] = lambda x: str(x) if x is not None else ""
     jinja.globals["constraint_prose"] = lambda raw, cname: constraint_to_prose(parse_constraint(raw), cname)
-    jinja.globals["exclude_type_notes"] = exclude_type_notes
 
     for ns in model.namespaces:
         d = outpath / ns.name
@@ -99,19 +98,6 @@ def _write_markdownlint_config(outpath: Path) -> None:
     """
     src = Path(__file__).parent / "markdownlint-cli2.yaml"
     (outpath / ".markdownlint-cli2.yaml").write_bytes(src.read_bytes())
-
-
-def exclude_type_notes(properties: dict[str, dict[str, str]]) -> list[str]:
-    """Return one human-readable note per property carrying an ``excludeType`` restriction."""
-    notes: list[str] = []
-    for name, kv in sorted(properties.items()):
-        excl = kv.get("excludeType")
-        if not excl:
-            continue
-        short = name.rpartition("/")[-1]
-        types = " or ".join(t.strip() for t in excl.split(",") if t.strip())
-        notes.append(f"*{short}* shall not be of type *{types}*.")
-    return notes
 
 
 def class_link(name: str) -> str:

@@ -252,7 +252,6 @@ Allowed headings:
   - `propName:` *(colon after name; type looked up from property definition)*
     - `minCount`: \<number\> *(Optional)*
     - `maxCount`: \<number\> *(Optional)*
-    - `excludeType`: \<class_name\>[, \<class_name\> ...] *(Optional)*
   - ...
 - External properties restrictions *(Optional)*
   - `/Namespace/propName:` *(colon after fully-qualified name)*
@@ -261,6 +260,8 @@ Allowed headings:
   - ...
 - Constraints *(Optional)*
   - `- if <prop> min <m> then <prop> min <n>`
+  - `- <prop>(/<prop>)* type <Class>(, <Class>)*`
+  - `- <prop>(/<prop>)* not type <Class>(, <Class>)*`
   - ...
 
 `minCount` and `maxCount` indicate the minimum and maximum number of times
@@ -271,23 +272,8 @@ a property may appear in a class (cardinality):
 - If `minCount` is omitted, it defaults to `0`.
 - If `maxCount` is omitted, it defaults to `*`.
 
-`excludeType` forbids a property's value from being an instance of the named
-class (or any of its subclasses). List several classes separated by commas to
-forbid each of them. It maps to one `sh:not [ sh:class ... ]` per class on the
-property shape:
-
-```markdown
-## Properties
-
-- element:
-  - minCount: 0
-  - excludeType: SpdxDocument
-```
-
-```ttl
-sh:property [ sh:path <.../element> ;
-        sh:not [ sh:class <.../SpdxDocument> ] ] .
-```
+Type restrictions on a property's value (including "must not be of type ...")
+are expressed under the `Constraints` heading, described below.
 
 > **Note:** The `type:` line that appeared in the old format under each
 > property in the Properties section is no longer used. The type is derived
@@ -352,6 +338,8 @@ expression syntax. Supported forms:
 | Expression | Meaning |
 | - | - |
 | `if <X> min <m> then <Y> min <n>` | If the class has at least *m* `<X>`, it shall also have at least *n* `<Y>`. |
+| `<prop>(/<prop>)* type <Class>(, <Class>)*` | Every node reached by following the property path shall be an instance of one of the named classes. |
+| `<prop>(/<prop>)* not type <Class>(, <Class>)*` | No node reached by following the property path may be an instance of any of the named classes. |
 
 A conditional-cardinality constraint maps to a `sh:or` on the class shape
 ("the antecedent does not hold, **or** the consequent does"):
@@ -372,6 +360,51 @@ In generated documentation the same constraint is rendered as a sentence:
 
 > If the ElementCollection has at least 1 element, it shall also have at least
 > 1 rootElement.
+
+A property-path value-type constraint restricts the type of the node reached by
+following a chain of properties. The left side is a slash-separated property
+path (one or more hops); the right side lists the allowed classes. It maps to a
+`sh:property` shape whose `sh:path` is a SHACL **sequence path** when there is
+more than one hop, and whose value is restricted with `sh:class` (single class)
+or `sh:or` of `sh:class` (several):
+
+```markdown
+## Constraints
+
+- customIdToLicense / elementValue type CustomLicense, CustomLicenseAddition, SimpleLicensingText
+```
+
+```ttl
+<.../SomeClass> sh:property [
+    sh:path ( <.../customIdToLicense> <.../elementValue> ) ;
+    sh:or ( [ sh:class <.../CustomLicense> ]
+            [ sh:class <.../CustomLicenseAddition> ]
+            [ sh:class <.../SimpleLicensingText> ] ) ] .
+```
+
+> Each customIdToLicense's elementValue shall be of type CustomLicense,
+> CustomLicenseAddition, or SimpleLicensingText.
+
+Prefix the path with `not` to forbid the listed types instead of requiring
+them. A single-hop `not type` is the common case ("the value shall not be of
+type ..."); it maps to `sh:not` wrapping the class restriction:
+
+```markdown
+## Constraints
+
+- element not type SpdxDocument
+```
+
+```ttl
+<.../ElementCollection> sh:property [
+    sh:path <.../element> ;
+    sh:not [ sh:class <.../SpdxDocument> ] ] .
+```
+
+> Each element shall not be of type SpdxDocument.
+
+Author every type constraint in the class whose `Properties` section declares
+the first property in the path, so the shape lands on the right node.
 
 ### Datatypes
 

@@ -33,7 +33,18 @@
  {{name}} & {{kv["type"]}} & {{kv["minCount"]}} & {{kv["maxCount"]}} \\
     {% endfor %}
 \bottomrule
-\end{tabular} 
+\end{tabular}
+\par
+{% endif %}
+
+{% if constraints %}
+\spdxpagepart{Constraints}
+\begin{itemize}
+\tightlist
+    {% for c in constraints %}
+\item {{tex_escape(constraint_prose(c, metadata["name"]))}}
+    {% endfor %}
+\end{itemize}
 \par
 {% endif %}
 

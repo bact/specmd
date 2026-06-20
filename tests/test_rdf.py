@@ -312,10 +312,10 @@ class TestRDFSerialization:
         assert "@graph" in data or isinstance(data, list)
 
 
-class TestExcludeType:
-    """Per-property ``excludeType`` -> ``sh:not [ sh:class ... ]``."""
+class TestNegatedPathType:
+    """Class-level ``<prop> not type <Class>`` -> ``sh:not [ sh:class ... ]`` on a property shape."""
 
-    def test_exclude_type_emits_sh_not_class(self, rdf_graph: Graph) -> None:
+    def test_not_type_emits_sh_not_class(self, rdf_graph: Graph) -> None:
         coll = URIRef(CORE + "Collection")
         agent = URIRef(CORE + "Agent")
         forbidden_paths: set[URIRef] = set()
@@ -351,3 +351,29 @@ class TestConditionalCardinality:
                     found_cons = True
         assert found_ante, "missing antecedent branch (element maxCount 0)"
         assert found_cons, "missing consequent branch (rootElement minCount 1)"
+
+
+class TestPathTypeConstraint:
+    """Class-level ``<prop>/<prop> type <Class>...`` -> sequence path + ``sh:or sh:class``."""
+
+    def test_sequence_path_and_class_or(self, rdf_graph: Graph) -> None:
+        from rdflib.collection import Collection as RDFList
+        from rdflib.namespace import RDF
+
+        coll = URIRef(CORE + "Collection")
+        found = None
+        for ps in rdf_graph.objects(coll, SH.property):
+            for path in rdf_graph.objects(ps, SH.path):
+                # sequence path is an RDF list (its head has rdf:first)
+                if (path, RDF.first, None) in rdf_graph:
+                    seq = [str(x) for x in RDFList(rdf_graph, path)]
+                    if seq == [CORE + "customIdToLicense", CORE + "elementValue"]:
+                        found = ps
+        assert found is not None, "no sequence path customIdToLicense/elementValue"
+
+        allowed = set()
+        for or_list in rdf_graph.objects(found, SH["or"]):
+            for branch in RDFList(rdf_graph, or_list):
+                allowed |= set(rdf_graph.objects(branch, SH["class"]))
+        assert URIRef(CORE + "Tool") in allowed
+        assert URIRef(CORE + "ElementMap") in allowed

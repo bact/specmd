@@ -34,13 +34,6 @@
     {% for name, kv in properties | dictsort %}
 | {{property_link(name)}} | {{type_link(all_properties[name.rpartition("/")[-1]]["fulltype"])}} | {{kv["minCount"]}} | {{kv["maxCount"]}} |
     {% endfor %}
-    {% set notes = exclude_type_notes(properties) %}
-    {% if notes %}
-
-{% for note in notes %}
-- {{note}}
-{% endfor %}
-    {% endif %}
 {% endif %}
 {% if constraints %}
 

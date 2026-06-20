@@ -17,7 +17,7 @@ from rdflib.collection import Collection
 from rdflib.namespace import DCTERMS, OWL, RDF, RDFS, SH, SKOS, VANN
 from rdflib.tools.rdf2dot import rdf2dot
 
-from specmd.constraints import CondCard, parse_constraint
+from specmd.constraints import CondCard, PathType, parse_constraint
 from specmd.parse.model import PropertyNature
 
 if TYPE_CHECKING:
@@ -88,7 +88,7 @@ def _resolve_class_iri(model: Model, ns_name: str, name: str) -> str | None:
     fq = name if name.startswith("/") else f"/{ns_name}/{name}"
     cls = model.classes.get(fq)
     if cls is None:
-        logger.warning("excludeType references unknown class %r", name)
+        logger.warning("Constraint references unknown class %r", name)
         return None
     return cls.iri
 
@@ -410,20 +410,74 @@ def _gen_classes(model: Model, g: Graph) -> None:
                 if maxcount != "*":
                     g.add((bnode, SH.maxCount, Literal(int(maxcount))))
 
-                # excludeType: forbid the value from being (an instance of) the named class(es).
-                _emit_exclude_types(g, bnode, model, c.ns.name, c.properties[p].get("excludeType"))
 
-
-def _emit_exclude_types(g: Graph, bnode: BNode, model: Model, ns_name: str, excl: str | None) -> None:
-    """Emit ``sh:not [ sh:class C ]`` on *bnode* for each comma-separated class in *excl*."""
-    if not excl:
+def _emit_cond_card(model: Model, g: Graph, c_node: URIRef, ns_name: str, ast: CondCard) -> None:
+    """Emit ``sh:or`` encoding "if A >= m then B >= n"  ==  (A <= m-1) OR (B >= n)."""
+    if ast.ante_min < 1:
+        logger.warning("Constraint antecedent min must be >= 1 (got %d for %r)", ast.ante_min, ast.ante_prop)
         return
-    for tname in (t.strip() for t in excl.split(",") if t.strip()):
-        excl_iri = _resolve_class_iri(model, ns_name, tname)
-        if excl_iri:
-            not_node = BNode()
-            g.add((bnode, SH["not"], not_node))
-            g.add((not_node, SH["class"], URIRef(excl_iri)))
+    ante_iri = _resolve_prop_iri(model, ns_name, ast.ante_prop)
+    cons_iri = _resolve_prop_iri(model, ns_name, ast.cons_prop)
+    if not ante_iri or not cons_iri:
+        return
+    or_list = Collection(g, None)  # type: ignore[arg-type]
+    b1 = BNode()
+    ps1 = BNode()
+    g.add((b1, SH.property, ps1))
+    g.add((ps1, SH.path, URIRef(ante_iri)))
+    g.add((ps1, SH.maxCount, Literal(ast.ante_min - 1)))
+    b2 = BNode()
+    ps2 = BNode()
+    g.add((b2, SH.property, ps2))
+    g.add((ps2, SH.path, URIRef(cons_iri)))
+    g.add((ps2, SH.minCount, Literal(ast.cons_min)))
+    or_list.append(b1)
+    or_list.append(b2)
+    g.add((c_node, SH["or"], or_list.uri))
+
+
+def _emit_class_choice(g: Graph, node: BNode, cls_iris: list[str]) -> None:
+    """Restrict *node* to the given class(es): ``sh:class`` for one, ``sh:or`` of classes for several."""
+    if len(cls_iris) == 1:
+        g.add((node, SH["class"], URIRef(cls_iris[0])))
+    else:
+        or_list = Collection(g, None)  # type: ignore[arg-type]
+        for ci in cls_iris:
+            cnode = BNode()
+            g.add((cnode, SH["class"], URIRef(ci)))
+            or_list.append(cnode)
+        g.add((node, SH["or"], or_list.uri))
+
+
+def _emit_path_type(model: Model, g: Graph, c_node: URIRef, ns_name: str, ast: PathType) -> None:
+    """Emit a property shape restricting the type of nodes reached by *ast.path*.
+
+    Positive constraints put the class choice directly on the property shape;
+    negated ones wrap it in ``sh:not``.
+    """
+    hop_iris = [_resolve_prop_iri(model, ns_name, h) for h in ast.path]
+    cls_iris = [_resolve_class_iri(model, ns_name, cl) for cl in ast.classes]
+    if any(i is None for i in hop_iris) or any(i is None for i in cls_iris):
+        return
+
+    pshape = BNode()
+    g.add((c_node, SH.property, pshape))
+
+    # Single hop -> plain path; multi-hop -> SHACL sequence path (an RDF list).
+    if len(hop_iris) == 1:
+        g.add((pshape, SH.path, URIRef(hop_iris[0])))  # type: ignore[arg-type]
+    else:
+        path_list = Collection(g, None)  # type: ignore[arg-type]
+        for hop in hop_iris:
+            path_list.append(URIRef(hop))  # type: ignore[arg-type]
+        g.add((pshape, SH.path, path_list.uri))
+
+    if ast.negated:
+        not_node = BNode()
+        _emit_class_choice(g, not_node, cls_iris)  # type: ignore[arg-type]
+        g.add((pshape, SH["not"], not_node))
+    else:
+        _emit_class_choice(g, pshape, cls_iris)  # type: ignore[arg-type]
 
 
 def _gen_class_constraints(model: Model, g: Graph) -> None:
@@ -436,28 +490,9 @@ def _gen_class_constraints(model: Model, g: Graph) -> None:
         for expr in constraints:
             ast = parse_constraint(expr)
             if isinstance(ast, CondCard):
-                if ast.ante_min < 1:
-                    logger.warning("Constraint antecedent min must be >= 1: %r", expr)
-                    continue
-                ante_iri = _resolve_prop_iri(model, c.ns.name, ast.ante_prop)
-                cons_iri = _resolve_prop_iri(model, c.ns.name, ast.cons_prop)
-                if not ante_iri or not cons_iri:
-                    continue
-                # "if A >= m then B >= n"  ==  (A <= m-1) OR (B >= n)
-                or_list = Collection(g, None)  # type: ignore[arg-type]
-                b1 = BNode()
-                ps1 = BNode()
-                g.add((b1, SH.property, ps1))
-                g.add((ps1, SH.path, URIRef(ante_iri)))
-                g.add((ps1, SH.maxCount, Literal(ast.ante_min - 1)))
-                b2 = BNode()
-                ps2 = BNode()
-                g.add((b2, SH.property, ps2))
-                g.add((ps2, SH.path, URIRef(cons_iri)))
-                g.add((ps2, SH.minCount, Literal(ast.cons_min)))
-                or_list.append(b1)
-                or_list.append(b2)
-                g.add((c_node, SH["or"], or_list.uri))
+                _emit_cond_card(model, g, c_node, c.ns.name, ast)
+            elif isinstance(ast, PathType):
+                _emit_path_type(model, g, c_node, c.ns.name, ast)
 
 
 def _gen_properties(model: Model, g: Graph) -> None:

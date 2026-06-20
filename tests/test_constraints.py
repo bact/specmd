@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from specmd.constraints import CondCard, constraint_to_prose, parse_constraint
+from specmd.constraints import CondCard, PathType, constraint_to_prose, parse_constraint
 from specmd.parse.markdown import ConstraintsSection
 
 
@@ -20,18 +20,40 @@ class TestParseConstraint:
     def test_unrecognised_returns_none(self) -> None:
         assert parse_constraint("element shall be unique") is None
 
+    def test_path_type_single_hop(self) -> None:
+        ast = parse_constraint("element type Tool")
+        assert ast == PathType(path=("element",), classes=("Tool",))
+
+    def test_path_type_multi_hop_multi_class(self) -> None:
+        ast = parse_constraint("customIdToLicense / elementValue type CustomLicense, SimpleLicensingText")
+        assert ast == PathType(
+            path=("customIdToLicense", "elementValue"),
+            classes=("CustomLicense", "SimpleLicensingText"),
+        )
+
+    def test_path_type_negated(self) -> None:
+        ast = parse_constraint("element not type SpdxDocument")
+        assert ast == PathType(path=("element",), classes=("SpdxDocument",), negated=True)
+
 
 class TestConstraintProse:
     def test_cond_card_prose(self) -> None:
         ast = parse_constraint("if element min 1 then rootElement min 1")
         prose = constraint_to_prose(ast, "ElementCollection")
-        assert prose == (
-            "If the ElementCollection has at least 1 element, "
-            "it shall also have at least 1 rootElement."
-        )
+        assert prose == ("If the ElementCollection has at least 1 element, it shall also have at least 1 rootElement.")
 
     def test_none_renders_empty(self) -> None:
         assert constraint_to_prose(None, "Whatever") == ""
+
+    def test_path_type_prose(self) -> None:
+        ast = parse_constraint("customIdToLicense / elementValue type CustomLicense, CustomLicenseAddition, SimpleLicensingText")
+        assert constraint_to_prose(ast, "Anything") == (
+            "Each customIdToLicense's elementValue shall be of type CustomLicense, CustomLicenseAddition, or SimpleLicensingText."
+        )
+
+    def test_path_type_negated_prose(self) -> None:
+        ast = parse_constraint("element not type SpdxDocument")
+        assert constraint_to_prose(ast, "Anything") == "Each element shall not be of type SpdxDocument."
 
 
 class TestConstraintsSection:

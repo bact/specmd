@@ -18,10 +18,10 @@ class TestModelLoading:
         assert model.namespaces[0].name == "Core"
 
     def test_class_count(self, model: Model) -> None:
-        assert len(model.classes) == 4
+        assert len(model.classes) == 5
 
     def test_property_count(self, model: Model) -> None:
-        assert len(model.properties) == 6
+        assert len(model.properties) == 8
 
     def test_vocabulary_count(self, model: Model) -> None:
         assert len(model.vocabularies) == 3

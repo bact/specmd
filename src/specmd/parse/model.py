@@ -493,7 +493,6 @@ class Class:
         "subClassOf",
     )
     VALID_PROP_METADATA: tuple[str, ...] = (
-        "excludeType",
         "maxCount",
         "minCount",
     )

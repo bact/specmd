@@ -20,12 +20,15 @@ Collection gathers a set of elements and may designate one or more as roots.
 ## Properties
 
 - element:
-  - excludeType: Agent
   - minCount: 0
 - rootElement:
-  - excludeType: Agent
+  - minCount: 0
+- customIdToLicense:
   - minCount: 0
 
 ## Constraints
 
 - if element min 1 then rootElement min 1
+- element not type Agent
+- rootElement not type Agent
+- customIdToLicense / elementValue type Tool, ElementMap
