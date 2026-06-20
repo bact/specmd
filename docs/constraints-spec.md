@@ -426,15 +426,19 @@ constraints that resolve to the identical AST collapse.
 
 ## Interaction: constraints vs. model individuals
 
-SpecMD emits named individuals (`Individuals/*.md`) into the same graph that the
+SpecMD emits named individuals (`Individuals/*.md`) into the same graph the
 SHACL shapes validate, so **a class constraint must hold for the model's own
-individuals of that class**. Found during implementation: an unconditional
-`supportLevel = noSupport` on a class is violated by an individual of that class
-that lacks `supportLevel`. (In SPDX, `NoneElement` is typed `Tool`.) This is not
-a bug — it is the constraint doing its job — but authors should ensure
-unconditional `=` / `in` / `matches` constraints are satisfiable by any spec
-individuals of the class, or scope them with `if … then …` so the individual is
-exempt.
+individuals of that class (and its subclasses)**. An unconditional `=` / `in` /
+`matches` on a class is violated by any individual of that class that lacks the
+value.
+
+SPDX limits this blast radius by design: every individual is typed as the
+neutral, property-free `IndividualElement` (Core) or `IndividualLicensingInfo`
+(ExpandedLicensing) rather than a domain class like `Tool` or `Package`. So a
+constraint on `Tool` does **not** touch `NoneElement` (which is an
+`IndividualElement`). Authors should still keep this in mind when constraining
+`Element` itself or `IndividualElement`/`IndividualLicensingInfo`, and can scope
+with `if … then …` to exempt the individual case.
 
 <!-- SPDX 3 model (develop) -->
 [m-elemcoll]: https://github.com/spdx/spdx-3-model/blob/develop/model/Core/Classes/ElementCollection.md
