@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from specmd.constraints import CondCard, PathType, constraint_to_prose, parse_constraint
+from specmd.constraints import CondCard, Fixed, PathType, Pattern, Range, constraint_to_prose, parse_constraint
 from specmd.parse.markdown import ConstraintsSection
 
 
@@ -22,24 +22,28 @@ class TestParseConstraint:
 
     def test_path_type_single_hop(self) -> None:
         ast = parse_constraint("element type Tool")
-        assert ast == PathType(path=("element",), classes=("Tool",))
+        assert ast == PathType(path=("element",), positives=("Tool",))
 
     def test_path_type_multi_hop_multi_class(self) -> None:
         ast = parse_constraint("customIdToLicense -> elementValue type CustomLicense, SimpleLicensingText")
         assert ast == PathType(
             path=("customIdToLicense", "elementValue"),
-            classes=("CustomLicense", "SimpleLicensingText"),
+            positives=("CustomLicense", "SimpleLicensingText"),
         )
 
-    def test_path_type_negated(self) -> None:
+    def test_path_type_negated_alias(self) -> None:
         ast = parse_constraint("element not type SpdxDocument")
-        assert ast == PathType(path=("element",), classes=("SpdxDocument",), negated=True)
+        assert ast == PathType(path=("element",), negatives=("SpdxDocument",))
+
+    def test_path_type_per_item_not(self) -> None:
+        ast = parse_constraint("element type Tool, not /Core/SpdxDocument")
+        assert ast == PathType(path=("element",), positives=("Tool",), negatives=("/Core/SpdxDocument",))
 
     def test_path_type_qualified_terms(self) -> None:
         ast = parse_constraint("customIdToLicense -> /Core/elementValue type /ExpandedLicensing/CustomLicense, SimpleLicensingText")
         assert ast == PathType(
             path=("customIdToLicense", "/Core/elementValue"),
-            classes=("/ExpandedLicensing/CustomLicense", "SimpleLicensingText"),
+            positives=("/ExpandedLicensing/CustomLicense", "SimpleLicensingText"),
         )
 
     def test_slash_is_no_longer_a_separator(self) -> None:
@@ -49,7 +53,22 @@ class TestParseConstraint:
     def test_duplicate_classes_removed(self) -> None:
         # The class list is a set of alternatives; exact duplicates are dropped, order preserved.
         ast = parse_constraint("x type /Core/License, Tool, /Core/License")
-        assert ast == PathType(path=("x",), classes=("/Core/License", "Tool"))
+        assert ast == PathType(path=("x",), positives=("/Core/License", "Tool"))
+
+    def test_pattern_simple(self) -> None:
+        ast = parse_constraint("packageVerificationCodeExcludedFile matches `^\\./`")
+        assert ast == Pattern(path=("packageVerificationCodeExcludedFile",), regex="^\\./")
+
+    def test_pattern_path_and_flags(self) -> None:
+        ast = parse_constraint("customIdToLicense -> key matches `^(LicenseRef-|AdditionRef-)` flags i")
+        assert ast == Pattern(path=("customIdToLicense", "key"), regex="^(LicenseRef-|AdditionRef-)", flags="i")
+
+    def test_range_decimal(self) -> None:
+        assert parse_constraint("cvssScore in 0..10") == Range(path=("cvssScore",), lo="0", hi="10")
+        assert parse_constraint("cvssScore in 7.0..8.9") == Range(path=("cvssScore",), lo="7.0", hi="8.9")
+
+    def test_fixed_value(self) -> None:
+        assert parse_constraint("relationshipType = hasConcludedLicense") == Fixed(path=("relationshipType",), value="hasConcludedLicense")
 
 
 class TestConstraintProse:
@@ -70,6 +89,24 @@ class TestConstraintProse:
     def test_path_type_negated_prose(self) -> None:
         ast = parse_constraint("element not type SpdxDocument")
         assert constraint_to_prose(ast, "Anything") == "Each element shall not be of type SpdxDocument."
+
+    def test_path_type_mixed_prose(self) -> None:
+        ast = parse_constraint("element type Agent, not /Core/SpdxDocument")
+        assert constraint_to_prose(ast, "Anything") == "Each element shall be of type Agent, and not SpdxDocument."
+
+    def test_pattern_prose_case_insensitive(self) -> None:
+        ast = parse_constraint("customIdToLicense -> key matches `^(LicenseRef-|AdditionRef-)` flags i")
+        assert constraint_to_prose(ast, "Anything") == (
+            "Each customIdToLicense's key shall match `^(LicenseRef-|AdditionRef-)` (case-insensitive)."
+        )
+
+    def test_range_prose(self) -> None:
+        ast = parse_constraint("cvssScore in 0..10")
+        assert constraint_to_prose(ast, "Anything") == "Each cvssScore shall be between 0 and 10."
+
+    def test_fixed_prose(self) -> None:
+        ast = parse_constraint("relationshipType = /Core/RelationshipType/hasConcludedLicense")
+        assert constraint_to_prose(ast, "Anything") == "The relationshipType shall be hasConcludedLicense."
 
     def test_qualified_terms_shortened_in_prose(self) -> None:
         # Qualified path hops and class names render with their local names only.

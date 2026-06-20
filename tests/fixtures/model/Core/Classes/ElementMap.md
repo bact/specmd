@@ -19,6 +19,9 @@ ElementMap pairs a single string key with the element it refers to.
 
 ## Properties
 
+- key:
+  - minCount: 1
+  - maxCount: 1
 - elementValue:
   - minCount: 1
   - maxCount: 1

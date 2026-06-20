@@ -379,6 +379,53 @@ class TestPathTypeConstraint:
         assert URIRef(CORE + "ElementMap") in allowed
 
 
+class TestPatternConstraint:
+    """``<path> matches `regex` flags i`` -> sequence path + ``sh:pattern`` + ``sh:flags``."""
+
+    def test_pattern_with_flags_on_path(self, rdf_graph: Graph) -> None:
+        from rdflib.collection import Collection as RDFList
+        from rdflib.namespace import RDF
+
+        coll = URIRef(CORE + "Collection")
+        found = None
+        for ps in rdf_graph.objects(coll, SH.property):
+            for path in rdf_graph.objects(ps, SH.path):
+                if (path, RDF.first, None) in rdf_graph:
+                    seq = [str(x) for x in RDFList(rdf_graph, path)]
+                    if seq == [CORE + "customIdToLicense", CORE + "key"]:
+                        found = ps
+        assert found is not None, "no sequence path customIdToLicense -> key"
+        patterns = {str(p) for p in rdf_graph.objects(found, SH["pattern"])}
+        flags = {str(f) for f in rdf_graph.objects(found, SH["flags"])}
+        assert patterns == {"^(LicenseRef-|AdditionRef-)"}
+        assert flags == {"i"}
+
+
+class TestRangeAndFixedConstraints:
+    """``<path> in M..N`` -> ``sh:minInclusive``/``sh:maxInclusive``; ``<path> = v`` -> ``sh:hasValue``."""
+
+    def test_numeric_range(self, rdf_graph: Graph) -> None:
+        coll = URIRef(CORE + "Collection")
+        bounds = set()
+        for ps in rdf_graph.objects(coll, SH.property):
+            if URIRef(CORE + "score") in set(rdf_graph.objects(ps, SH.path)):
+                lo = list(rdf_graph.objects(ps, SH.minInclusive))
+                hi = list(rdf_graph.objects(ps, SH.maxInclusive))
+                if lo and hi:
+                    bounds.add((int(lo[0]), int(hi[0])))
+        assert bounds == {(0, 10)}
+
+    def test_fixed_value(self, rdf_graph: Graph) -> None:
+        coll = URIRef(CORE + "Collection")
+        none_support = URIRef(CORE + "SupportType/noSupport")
+        found = any(
+            URIRef(CORE + "supportLevel") in set(rdf_graph.objects(ps, SH.path))
+            and (ps, SH["hasValue"], none_support) in rdf_graph
+            for ps in rdf_graph.objects(coll, SH.property)
+        )
+        assert found, "no sh:hasValue noSupport on supportLevel"
+
+
 class TestRelationshipConstraints:
     """Relationship-vocab ``from``/``to`` -> SHACL endpoint typing scoped by ``relationshipType``."""
 

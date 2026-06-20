@@ -424,6 +424,18 @@ already-emitted constraint ASTs and skips any repeat before emitting its
 `sh:property` shape. Clean output, near-zero cost, no false positives — only
 constraints that resolve to the identical AST collapse.
 
+## Interaction: constraints vs. model individuals
+
+SpecMD emits named individuals (`Individuals/*.md`) into the same graph that the
+SHACL shapes validate, so **a class constraint must hold for the model's own
+individuals of that class**. Found during implementation: an unconditional
+`supportLevel = noSupport` on a class is violated by an individual of that class
+that lacks `supportLevel`. (In SPDX, `NoneElement` is typed `Tool`.) This is not
+a bug — it is the constraint doing its job — but authors should ensure
+unconditional `=` / `in` / `matches` constraints are satisfiable by any spec
+individuals of the class, or scope them with `if … then …` so the individual is
+exempt.
+
 <!-- SPDX 3 model (develop) -->
 [m-elemcoll]: https://github.com/spdx/spdx-3-model/blob/develop/model/Core/Classes/ElementCollection.md
 [m-elemmap]: https://github.com/spdx/spdx-3-model/blob/develop/model/Core/Classes/ElementMap.md

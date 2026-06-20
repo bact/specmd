@@ -21,3 +21,4 @@ Associates a reference string with the element that defines the license.
 ## Constraints
 
 - /Core/elementValue type /Core/Tool, ElementMap
+- key matches `^(LicenseRef-|AdditionRef-)` flags i

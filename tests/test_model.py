@@ -21,7 +21,7 @@ class TestModelLoading:
         assert len(model.classes) == 6
 
     def test_property_count(self, model: Model) -> None:
-        assert len(model.properties) == 11
+        assert len(model.properties) == 13
 
     def test_vocabulary_count(self, model: Model) -> None:
         assert len(model.vocabularies) == 3
