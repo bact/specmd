@@ -25,6 +25,7 @@ and specification documents.
   - [Export](#export)
   - [Common options](#common-options)
 - [Model configuration](#model-configuration)
+- [Richer SHACL than spec-parser](#richer-shacl-than-spec-parser)
 - [spec-parser compatibility](#spec-parser-compatibility)
 - [Testing](#testing)
   - [shacl2code compatibility test](#shacl2code-compatibility-test)
@@ -194,6 +195,21 @@ rdf:
 
 See [docs/format.md](docs/format.md#model-configuration-specmdyml) for
 the full reference.
+
+## Richer SHACL than spec-parser
+
+A few SpecMD syntax additions capture validation rules that spec-parser can
+only express as prose. SpecMD compiles them to SHACL automatically:
+
+| SpecMD syntax | Generated SHACL | Validates |
+| - | - | - |
+| Relationship vocab `from:` / `to:` / `relationshipClass:` | `sh:or` keyed on `relationshipType`, with `sh:class` | a relationship's source/target classes, per relationship type |
+| `if A min m then B min n` (class `Constraints`) | `sh:or` | conditional cardinality across two properties |
+| `a / b type C, D` (class `Constraints`) | sequence-path `sh:class` / `sh:or` | the type of a value's sub-property (type scoping) |
+| `a not type C` (class `Constraints`) | `sh:not [ sh:class ]` | forbidden value types |
+
+Syntax: [docs/format.md](docs/format.md). SHACL mapping and rationale:
+[docs/design.md](docs/design.md).
 
 ## spec-parser compatibility
 

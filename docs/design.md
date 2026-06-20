@@ -68,10 +68,27 @@ custom parser and producing no structured RDF output.
 
 SpecMD supports a structured vocabulary entry format with `from`, `to`,
 and `relationshipClass` sub-fields for relationship type vocabularies.
-This enables SHACL validation rules and specialised rendering of
-relationship types. The earlier format used only prose descriptions.
-The `specmd migrate` command extracts these fields automatically from
-existing prose descriptions where possible.
+These compile to SHACL rules that validate a relationship's source and
+target classes per relationship type (see
+[Relationship endpoint scoping](#relationship-endpoint-scoping)) and drive
+specialised rendering of relationship types. The earlier format used only
+prose descriptions. The `specmd migrate` command extracts these fields
+automatically from existing prose descriptions where possible.
+
+### Class constraints
+
+SpecMD adds an optional `## Constraints` section on classes for rules
+that span more than one property or restrict the type of a property's
+value. Each constraint is a single `- ` list item:
+
+- `if <X> min <m> then <Y> min <n>` — conditional cardinality.
+- `<prop>(/<prop>)* type <Class>(, ...)` — the node reached by a property
+  path must be one of the named classes.
+- `<prop>(/<prop>)* not type <Class>(, ...)` — and the negated form.
+
+These compile to SHACL (`sh:or`, sequence paths, `sh:class`/`sh:not`) — see
+[Class-level constraints](#class-level-constraints). spec-parser has no
+equivalent; such rules previously existed only as conformance prose.
 
 ### Additional metadata fields
 
@@ -222,6 +239,48 @@ VANN, OMG Annotation Vocabulary) is explicitly declared as
 `owl:AnnotationProperty`. This makes the ontology structurally
 well-formed and self-contained under OWL 2 without requiring
 `owl:imports` directives.
+
+### Class-level constraints
+
+The `## Constraints` section on a class compiles to SHACL on that class's
+node shape. None of these have a spec-parser equivalent.
+
+- **Conditional cardinality** (`if X min m then Y min n`) → `sh:or` of
+  "antecedent fails" (`X` has `sh:maxCount m-1`) and "consequent holds"
+  (`Y` has `sh:minCount n`).
+- **Value type scoping** (`a / b type C, D`) → an `sh:property` shape whose
+  `sh:path` is a SHACL **sequence path** for multi-hop paths, restricting
+  the reached node with `sh:class` (one class) or `sh:or` of `sh:class`
+  (several). This expresses constraints on a property of a property's value
+  (e.g. an `ElementMap`'s `elementValue`) that cardinality and range alone
+  cannot.
+- **Type exclusion** (`a not type C`) → the same shape with the class choice
+  wrapped in `sh:not`.
+
+A single parsed constraint feeds both the SHACL emitter and the prose
+rendered into the documentation, so the shapes and the human-readable
+sentences cannot drift.
+
+### Relationship endpoint scoping
+
+For each entry of a relationship-type vocabulary, SpecMD constrains the
+relationship class so that *if* its `relationshipType` is that entry, *then*
+its `from`/`to` values must be instances of the entry's declared classes.
+This is encoded per entry as
+
+```turtle
+<RelationshipClass> sh:or (
+    [ sh:not [ sh:property [ sh:path :relationshipType ;
+                             sh:hasValue <vocab/entryName> ] ] ]
+    [ sh:property [ sh:path :from ; <class choice> ] ;
+      sh:property [ sh:path :to   ; <class choice> ] ] ) .
+```
+
+An endpoint declared only as the root `Element` is treated as unconstrained
+(it is already the `range` of `from`/`to`) and emits no shape. Entries whose
+`relationshipClass`, `from`, or `to` cannot be resolved are skipped with a
+warning. spec-parser captures `from`/`to` only as prose; it produces no such
+validation.
 
 ---
 

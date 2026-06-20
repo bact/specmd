@@ -252,6 +252,7 @@ def gen_rdf_ontology(model: Model) -> Graph:
 
     _gen_classes(model, g)
     _gen_class_constraints(model, g)
+    _gen_relationship_constraints(model, g)
     _gen_properties(model, g)
     _gen_vocabularies(model, g)
     _gen_individuals(model, g)
@@ -493,6 +494,84 @@ def _gen_class_constraints(model: Model, g: Graph) -> None:
                 _emit_cond_card(model, g, c_node, c.ns.name, ast)
             elif isinstance(ast, PathType):
                 _emit_path_type(model, g, c_node, c.ns.name, ast)
+
+
+def _endpoint_class_iris(model: Model, ns_name: str, class_names: list[str]) -> list[str]:
+    """Resolve relationship endpoint classes to IRIs, dropping the universal ``Element`` root.
+
+    A class named only ``Element`` is unconstrained (it is the root of the
+    hierarchy and already the range of ``from``/``to``), so it is excluded.
+    """
+    bases = [str(cn).split("[", 1)[0].strip() for cn in class_names]
+    bases = [b for b in bases if b and b != "Element"]
+    iris = [_resolve_class_iri(model, ns_name, b) for b in bases]
+    return [i for i in iris if i is not None]
+
+
+def _emit_endpoint_shape(g: Graph, parent: BNode, prop_iri: str, iris: list[str]) -> None:
+    """Emit ``sh:property [ sh:path <prop> ; <class choice> ]`` on *parent*."""
+    ps = BNode()
+    g.add((parent, SH.property, ps))
+    g.add((ps, SH.path, URIRef(prop_iri)))
+    _emit_class_choice(g, ps, iris)
+
+
+def _emit_endpoint(model: Model, g: Graph, parent: BNode, ns_name: str, side: tuple[str, list[str]]) -> bool:
+    """Resolve and emit one endpoint shape; return ``True`` when a shape was emitted."""
+    prop_name, class_names = side
+    iris = _endpoint_class_iris(model, ns_name, class_names)
+    if not iris:
+        return False
+    prop_iri = _resolve_prop_iri(model, ns_name, prop_name)
+    if not prop_iri:
+        return False
+    _emit_endpoint_shape(g, parent, prop_iri, iris)
+    return True
+
+
+def _gen_relationship_constraints(model: Model, g: Graph) -> None:
+    """Emit SHACL scoping the ``from``/``to`` endpoint classes per relationship type.
+
+    For each entry of a relationship-type vocabulary, the relationship class is
+    constrained so that *if* its ``relationshipType`` is that entry, *then* its
+    ``from``/``to`` values must be instances of the entry's declared classes.
+    This is encoded as ``sh:or ( [not this type] [endpoints conform] )``.
+    """
+    for vocab in model.vocabularies.values():
+        if not getattr(vocab, "is_relationship_vocab", False):
+            continue
+        ns_name = vocab.ns.name
+        rtype_prop = _resolve_prop_iri(model, ns_name, "relationshipType")
+        if not rtype_prop:
+            continue
+        for entry_name, entry in vocab.entries.items():
+            rel_base = str(entry.get("relationshipClass", "")).split("[", 1)[0].strip()
+            rel_class_iri = _resolve_class_iri(model, ns_name, rel_base) if rel_base else None
+            if not rel_class_iri:
+                continue
+
+            from_classes = entry.get("from") if isinstance(entry.get("from"), list) else []
+            to_classes = entry.get("to") if isinstance(entry.get("to"), list) else []
+            consequent = BNode()
+            emitted = _emit_endpoint(model, g, consequent, ns_name, ("from", from_classes))  # type: ignore[arg-type]
+            emitted = _emit_endpoint(model, g, consequent, ns_name, ("to", to_classes)) or emitted  # type: ignore[arg-type]
+            if not emitted:
+                continue
+
+            # Antecedent shape: the relationship has this entry as its relationshipType value.
+            antecedent = BNode()
+            ant_ps = BNode()
+            g.add((antecedent, SH.property, ant_ps))
+            g.add((ant_ps, SH.path, URIRef(rtype_prop)))
+            g.add((ant_ps, SH["hasValue"], URIRef(vocab.iri + "/" + entry_name)))
+
+            not_node = BNode()
+            g.add((not_node, SH["not"], antecedent))
+
+            or_list = Collection(g, None)  # type: ignore[arg-type]
+            or_list.append(not_node)
+            or_list.append(consequent)
+            g.add((URIRef(rel_class_iri), SH["or"], or_list.uri))
 
 
 def _gen_properties(model: Model, g: Graph) -> None:

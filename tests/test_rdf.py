@@ -377,3 +377,40 @@ class TestPathTypeConstraint:
                 allowed |= set(rdf_graph.objects(branch, SH["class"]))
         assert URIRef(CORE + "Tool") in allowed
         assert URIRef(CORE + "ElementMap") in allowed
+
+
+class TestRelationshipConstraints:
+    """Relationship-vocab ``from``/``to`` -> SHACL endpoint typing scoped by ``relationshipType``."""
+
+    def test_endpoint_typing_scoped_by_relationship_type(self, rdf_graph: Graph) -> None:
+        from rdflib.collection import Collection as RDFList
+
+        rel = URIRef(CORE + "Relationship")
+        rtype = URIRef(CORE + "RelationshipType/toolUsedBy")
+
+        # Find the sh:or whose negated branch keys off relationshipType = toolUsedBy.
+        target = None
+        for or_list in rdf_graph.objects(rel, SH["or"]):
+            branches = list(RDFList(rdf_graph, or_list))
+            keys_off = any(
+                (ps, SH["hasValue"], rtype) in rdf_graph
+                for b in branches
+                for n in rdf_graph.objects(b, SH["not"])
+                for ps in rdf_graph.objects(n, SH.property)
+            )
+            if keys_off:
+                target = branches
+        assert target is not None, "no relationship constraint scoped to toolUsedBy"
+
+        # The consequent branch must require from -> Tool and to -> Agent.
+        endpoints = {}
+        for b in target:
+            for ps in rdf_graph.objects(b, SH.property):
+                paths = set(rdf_graph.objects(ps, SH.path))
+                classes = set(rdf_graph.objects(ps, SH["class"]))
+                if URIRef(CORE + "from") in paths:
+                    endpoints["from"] = classes
+                if URIRef(CORE + "to") in paths:
+                    endpoints["to"] = classes
+        assert endpoints.get("from") == {URIRef(CORE + "Tool")}
+        assert endpoints.get("to") == {URIRef(CORE + "Agent")}

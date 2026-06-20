@@ -18,10 +18,10 @@ class TestModelLoading:
         assert model.namespaces[0].name == "Core"
 
     def test_class_count(self, model: Model) -> None:
-        assert len(model.classes) == 5
+        assert len(model.classes) == 6
 
     def test_property_count(self, model: Model) -> None:
-        assert len(model.properties) == 8
+        assert len(model.properties) == 11
 
     def test_vocabulary_count(self, model: Model) -> None:
         assert len(model.vocabularies) == 3
@@ -204,7 +204,7 @@ class TestVocabEntryValidation:
         assert "unknown class" in caplog.text
 
     def test_unknown_qualifier_prop_warns(self, model: Model, caplog: pytest.LogCaptureFixture) -> None:
-        # 'relationshipType' is not a property in the fixture model
+        # 'affects' from-class carries the qualifier Vulnerability[unknownQualifierProp=x]
         with caplog.at_level(logging.WARNING, logger="specmd.parse.model"):
             model.validate_vocab_entries()
         assert "unknown property" in caplog.text
