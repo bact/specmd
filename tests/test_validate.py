@@ -40,7 +40,7 @@ class TestCheckSections:
         assert _check_sections(content) == []
 
     def test_markdown_link_unquoted_returns_error(self) -> None:
-        # '[' starts YAML flow sequence — raw unquoted form is invalid.
+        # '[' starts YAML flow sequence -- raw unquoted form is invalid.
         content = dedent("""\
             ## Entries
 
@@ -118,7 +118,7 @@ class TestCheckSections:
         assert _check_sections(content) == []
 
     def test_multiline_block_scalar_valid(self) -> None:
-        # >- spanning two content lines — should parse cleanly.
+        # >- spanning two content lines -- should parse cleanly.
         content = dedent("""\
             ## Entries
 
@@ -213,7 +213,7 @@ class TestValidateInplace:
 
 
 # ---------------------------------------------------------------------------
-# _cmd_validate — CLI integration (single file, --strict, summary line)
+# _cmd_validate -- CLI integration (single file, --strict, summary line)
 # ---------------------------------------------------------------------------
 
 

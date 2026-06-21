@@ -29,8 +29,8 @@ more outputs:
 | `webpages` | Per-IRI web pages *(not yet implemented)* |
 
 A few SpecMD syntax additions capture validation rules that spec-parser can only
-express as prose — type scoping, conditional cardinality, relationship endpoint
-typing, numeric ranges, fixed values, and profile conformance — and compile them
+express as prose -- type scoping, conditional cardinality, relationship endpoint
+typing, numeric ranges, fixed values, and profile conformance -- and compile them
 to SHACL automatically. See [docs/constraints-spec.md](docs/constraints-spec.md)
 for the rule catalogue and [docs/design.md](docs/design.md) for the SHACL
 mapping.
@@ -88,7 +88,7 @@ IRI metadata such as `id:` accepts both a bare URL and the autolink form
 
 SpecMD targets compatibility with [spdx/spec-parser] workflows and accepts the
 original Markdown format via automatic migration (`specmd migrate`, or the
-`main.py` drop-in shim). Generated output is not byte-for-byte identical —
+`main.py` drop-in shim). Generated output is not byte-for-byte identical --
 existing SHACL validation results are preserved, but RDF/OWL consumers should
 review the differences. See
 [docs/spec-parser-compatibility.md](docs/spec-parser-compatibility.md).

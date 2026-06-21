@@ -1,5 +1,5 @@
 ---
-SPDX-FileCopyrightText: 2026 Arthit Suriyawongkul
+SPDX-FileCopyrightText: 2026-present Arthit Suriyawongkul
 SPDX-FileType: DOCUMENTATION
 SPDX-License-Identifier: CC0-1.0
 ---
@@ -81,14 +81,14 @@ SpecMD adds an optional `## Constraints` section, on **classes** and on
 **properties**, for rules that cardinality and range alone cannot express.
 Each constraint is a single `- ` list item:
 
-- `if <X> min <m> then <Y> min <n>` — conditional cardinality (class only).
-- `<term>(-> <term>)* type <term>(, ...)` — the node reached by a property
+- `if <X> min <m> then <Y> min <n>` -- conditional cardinality (class only).
+- `<term>(-> <term>)* type <term>(, ...)` -- the node reached by a property
   path must be one of the named classes.
-- `<term>(-> <term>)* not type <term>(, ...)` — and the negated form.
+- `<term>(-> <term>)* not type <term>(, ...)` -- and the negated form.
 
 Each `<term>` (a path hop or a class) is a bare local name resolved in the
 owner's namespace, or a fully-qualified `/Namespace/Name`. Path hops are joined
-with `->` rather than `/`, so a qualified name's slashes are unambiguous — the
+with `->` rather than `/`, so a qualified name's slashes are unambiguous -- the
 real `customIdToLicense` reaches `/Core/elementValue` and allows
 `/ExpandedLicensing/CustomLicense`, which span three namespaces. Qualified
 terms render by their local name in prose, falling back to the full
@@ -98,12 +98,12 @@ shorten to the same local name.
 A `type` / `not type` constraint authored on a **property** is written
 relative to the property's value and applies wherever the property is used;
 SpecMD prepends the property name and emits it on each using class. This is
-the natural home for a restriction intrinsic to the property — for example,
+the natural home for a restriction intrinsic to the property -- for example,
 the `elementValue` of the `ElementMap` that `customIdToLicense` points to. The
 same rule may instead be authored on a class when the path starts from one of
 that class's own properties.
 
-These compile to SHACL (`sh:or`, sequence paths, `sh:class`/`sh:not`) — see
+These compile to SHACL (`sh:or`, sequence paths, `sh:class`/`sh:not`) -- see
 [Class-level constraints](#class-level-constraints). spec-parser has no
 equivalent; such rules previously existed only as conformance prose.
 
@@ -117,9 +117,9 @@ equivalent; such rules previously existed only as conformance prose.
 
 The generated ontology separates two concerns:
 
-- **OWL** — open-world inference: class hierarchy, property
+- **OWL** -- open-world inference: class hierarchy, property
   declarations, object/datatype property ranges, ontology metadata.
-- **SHACL** — closed-world validation: mandatory properties,
+- **SHACL** -- closed-world validation: mandatory properties,
   cardinality, value constraints, abstract-class enforcement,
   enumeration enforcement.
 
@@ -137,14 +137,14 @@ outputs intentionally differ.
 
 **Equivalent in practice:**
 
-- **SHACL validation** — documents conforming against the original
+- **SHACL validation** -- documents conforming against the original
   SHACL shapes remain conforming. Vocabulary enumeration and
   abstract-class enforcement use the same SHACL mechanisms (`sh:in`,
   `sh:not`/`sh:hasValue`).
-- **JSON-LD expansion** — compliant JSON-LD processors expand both
+- **JSON-LD expansion** -- compliant JSON-LD processors expand both
   context formats to identical IRIs. `@protected` is transparent for
   documents that do not layer additional contexts.
-- **Class hierarchy and property declarations** — `rdfs:subClassOf`,
+- **Class hierarchy and property declarations** -- `rdfs:subClassOf`,
   `owl:ObjectProperty`, `owl:DatatypeProperty`, and `rdfs:range`
   triples are unchanged.
 
@@ -242,7 +242,7 @@ IRI while the ontology IRI remains stable across minor versions.
 ### Base URI: explicit configuration, not derived
 
 Users set `base-uri` in `specmd.yml` to declare the ontology base URI
-explicitly — recommended for any non-SPDX model. If omitted, SpecMD
+explicitly -- recommended for any non-SPDX model. If omitted, SpecMD
 derives the base URI from the Core namespace IRI (the SPDX 3
 convention, as proposed in [spdx/spec-parser#206]). When no Core
 namespace is present either, SpecMD falls back to the longest common

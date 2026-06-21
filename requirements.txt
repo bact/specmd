@@ -1,4 +1,7 @@
-# Runtime dependencies -- kept in sync with pyproject.toml [project.dependencies]
+# Runtime dependencies - kept in sync with pyproject.toml [project.dependencies]
+# SpecMD use pyproject.toml to manage dependencies.
+# This requirements.txt is provided for compatibility with legacy scripts
+# that expect spec-parser's requirements.txt to be present.
 Jinja2>=3.1.6
 PyYAML>=6.0.3
 rdflib>=7.6.0

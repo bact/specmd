@@ -178,7 +178,7 @@ class Conformance:
     count: str = "1"
     linked_by: str = ""
     where: tuple[str, ...] = ()
-    binding: str = ""  # `as:` — original subject name (now superseded by `linked_by`); reserved for `where` references
+    binding: str = ""  # `as:` -- original subject name (now superseded by `linked_by`); reserved for `where` references
 
 
 Constraint = Predicate | Conditional | SelectorPattern
@@ -391,7 +391,7 @@ def _ast_path(ast: Constraint | None) -> tuple[str, ...] | None:
 def scope_property_path(ast: Constraint | None, prop_name: str) -> Constraint | None:
     """Scope a property's own constraint through *prop_name*.
 
-    The property name is prepended as the path's first hop — unless the author
+    The property name is prepended as the path's first hop -- unless the author
     already wrote it explicitly (``prop_name -> …``), in which case the AST is
     returned unchanged. Returns ``None`` for constraints with no single path.
     """

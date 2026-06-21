@@ -68,7 +68,7 @@ def _jsonschema_from_graph(g: Graph, tmp: Path, name: str) -> dict:
     ttl = tmp / f"{name}.ttl"
     schema = tmp / f"{name}.json"
     g.serialize(str(ttl), format="ttl")
-    result = subprocess.run(  # noqa: S603 — argv is fully controlled, no user input
+    result = subprocess.run(  # noqa: S603 -- argv is fully controlled, no user input
         [
             sys.executable,
             "-m",

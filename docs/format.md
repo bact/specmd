@@ -1,6 +1,6 @@
 ---
 SPDX-FileCopyrightText: 2024-2025 SPDX Project
-SPDX-FileCopyrightText: 2026 Arthit Suriyawongkul
+SPDX-FileCopyrightText: 2026-present Arthit Suriyawongkul
 SPDX-FileType: DOCUMENTATION
 SPDX-License-Identifier: Community-Spec-1.0
 ---
@@ -515,7 +515,7 @@ Allowed headings:
 A property's optional `Constraints` heading restricts the type of a node
 reached *from the property's value*. The path is written relative to the value,
 so the property name itself is implicit. This is the right home for a rule that
-is intrinsic to the property regardless of which class uses it — for example,
+is intrinsic to the property regardless of which class uses it -- for example,
 constraining the `elementValue` of the `ElementMap` that `customIdToLicense`
 points to.
 
@@ -923,7 +923,7 @@ by these verbal forms.
 
 > **SPDX 3 model:**
 > The SPDX 3 specification adheres to the
-> *[ISO/IEC Directives, Part 2 — Principles and rules for the structure and
+> *[ISO/IEC Directives, Part 2 -- Principles and rules for the structure and
 > drafting of ISO and IEC documents][iso-part2]*.
 > You must use the verbal forms specified in the table above exactly as
 > defined in the directive.

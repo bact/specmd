@@ -55,8 +55,8 @@ def _quote_unsafe_scalar(m: re.Match[str]) -> str:
     values are intentional YAML inline lists, not Markdown links.
 
     Unsafe characters in YAML plain scalars (block context):
-    - ``[`` / ``{`` — YAML flow sequence / mapping start.
-    - ``: `` (colon-space) — YAML mapping indicator, misread mid-sentence.
+    - ``[`` / ``{`` -- YAML flow sequence / mapping start.
+    - ``: `` (colon-space) -- YAML mapping indicator, misread mid-sentence.
     """
     indent_hyphen = m.group(1)
     key_colon = m.group(2)
@@ -66,7 +66,7 @@ def _quote_unsafe_scalar(m: re.Match[str]) -> str:
     if value[:1] in ("'", '"'):
         return m.group(0)
 
-    # Skip from/to — [A, B] values there are intentional YAML inline lists.
+    # Skip from/to -- [A, B] values there are intentional YAML inline lists.
     key = key_colon.split(":")[0].strip()
     if key in _YAML_LIST_KEYS:
         return m.group(0)
