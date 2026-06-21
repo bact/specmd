@@ -11,17 +11,17 @@ vocabulary-driven, conformance), the **contextual type-walk resolver**,
 **explicit-first-hop tolerance** on property files, and **AST-level dedup**;
 tested and pySHACL-verified (including a full end-to-end Lite profile fixture).
 Path hops resolve as properties of the class reached by the previous hop
-(`Class.all_properties`, spanning namespaces), so bare names work cross-namespace
-and only class/value terms need qualification. A property-file constraint scopes
-through the property name automatically, but the author may also write that hop
-explicitly (`prop -> …`) without it being doubled. Identical constraints are
-never emitted twice on the same class node. Authored input survives a
-`markdownlint --fix` pass: MD034 autolinks (`<https://…>`) are accepted wherever
-a bare URL is, and markdownlint's list-indentation is valid YAML.
-Unifies the constraint mechanisms (class `## Constraints`, property
+(`Class.all_properties`, spanning namespaces), so bare names work
+cross-namespace and only class/value terms need qualification. A property-file
+constraint scopes through the property name automatically, but the author may
+also write that hop explicitly (`prop -> …`) without it being doubled. Identical
+constraints are never emitted twice on the same class node. Authored input
+survives a `markdownlint --fix` pass: MD034 autolinks (`<https://…>`) are
+accepted wherever a bare URL is, and markdownlint's list-indentation is valid
+YAML. Unifies the constraint mechanisms (class `## Constraints`, property
 `## Constraints`, vocabulary `from`/`to`, `## Profile conformance`) into one
-model, and catalogs every rule with its SpecMD input, rendered prose, SHACL, and
-provenance.
+model, and catalogs every rule with its SpecMD input, rendered prose, SHACL,
+and provenance.
 
 ## Layers — keep these three apart
 
@@ -129,7 +129,7 @@ One renderer. Terms show local names, falling back to qualified on collision.
 | type (pos) | `Each <path> shall be of type A, B, or C.` |
 | type (neg) | `Each <path> shall not be of type A.` |
 | type (mixed) | `Each <path> shall be of type A or B, and not C.` |
-| pattern | `Each <path> shall match`<regex>`.` |
+| pattern | `Each <path> shall match <regex>.` |
 | range | `Each <path> shall be between M and N.` |
 | fixed | `The <path> shall be <value>.` |
 | if/then | `If <cond>, then <consequent>.` |
@@ -137,39 +137,59 @@ One renderer. Terms show local names, falling back to qualified on collision.
 
 ---
 
-# Rule catalog
+## Rule catalog
 
 Each rule: **Syntax** (SpecMD Markdown) · **Section/File** · **Provenance** ·
 **SPDX refs** · **Prose** (rendered) · **SHACL**. SHACL uses a single `:`
 prefix for brevity. SPDX deep links target `develop` and are best-effort.
 
-## Tier 1 — predicates
+### Tier 1 — predicates
 
-### 1. Type-scope (positive)
+#### 1. Type-scope (positive)
 
 - **Syntax:** `from type /Security/Vulnerability`
-- **Section/File:** `## Constraints` · [Security/Classes/VulnAssessmentRelationship.md][m-vulnassess]
+- **Section/File:** `## Constraints` ·
+  [Security/Classes/VulnAssessmentRelationship.md][m-vulnassess]
 - **Provenance:** authored (new)
-- **Refs:** [VulnAssessmentRelationship][m-vulnassess] · [from][m-from] · [Vulnerability][m-vuln] · [issue #987][i987]
+- **Refs:** [VulnAssessmentRelationship][m-vulnassess] ·
+  [from][m-from] · [Vulnerability][m-vuln] · [issue #987][i987]
 - **Prose:** *Each from shall be of type Vulnerability.*
 - **SHACL:** `sh:property [ sh:path :from ; sh:class :Vulnerability ] .`
 
-### 2. Type-scope (negative)
+#### 2. Type-scope (negative)
 
 - **Syntax:** `element type not /Core/SpdxDocument`
-- **Section/File:** `## Constraints` · [Core/Classes/ElementCollection.md][m-elemcoll]
+- **Section/File:** `## Constraints` ·
+  [Core/Classes/ElementCollection.md][m-elemcoll]
 - **Provenance:** authored (new)
-- **Refs:** [ElementCollection][m-elemcoll] · [element][m-element] · [SpdxDocument][m-spdxdoc]
+- **Refs:** [ElementCollection][m-elemcoll] ·
+  [element][m-element] · [SpdxDocument][m-spdxdoc]
 - **Prose:** *Each element shall not be of type SpdxDocument.*
-- **SHACL:** `sh:property [ sh:path :element ; sh:not [ sh:class :SpdxDocument ] ] .`
+- **SHACL:**
 
-### 3. Type-scope (path, mixed)
+  ```turtle
+  sh:property [ sh:path :element ;
+      sh:not [ sh:class :SpdxDocument ] ] .
+  ```
 
-- **Syntax:** `customIdToLicense -> elementValue type /ExpandedLicensing/CustomLicense, /ExpandedLicensing/CustomLicenseAddition, SimpleLicensingText`
-- **Section/File:** `## Constraints` · [SimpleLicensing/Properties/customIdToLicense.md][m-cidtolic] (or [LicenseExpression][m-licexpr] class)
+#### 3. Type-scope (path, mixed)
+
+- **Syntax:**
+
+  ```text
+  customIdToLicense -> elementValue type /ExpandedLicensing/CustomLicense,
+    /ExpandedLicensing/CustomLicenseAddition, SimpleLicensingText
+  ```
+
+- **Section/File:** `## Constraints` ·
+  [SimpleLicensing/Properties/customIdToLicense.md][m-cidtolic]
+  (or [LicenseExpression][m-licexpr] class)
 - **Provenance:** authored (new)
-- **Refs:** [customIdToLicense][m-cidtolic] · [ElementMap][m-elemmap] · [elementValue][m-elemval] · [CustomLicense][m-customlic]
-- **Prose:** *Each customIdToLicense's elementValue shall be of type CustomLicense, CustomLicenseAddition, or SimpleLicensingText.*
+- **Refs:** [customIdToLicense][m-cidtolic] ·
+  [ElementMap][m-elemmap] · [elementValue][m-elemval] ·
+  [CustomLicense][m-customlic]
+- **Prose:** *Each customIdToLicense's elementValue shall be of type
+  CustomLicense, CustomLicenseAddition, or SimpleLicensingText.*
 - **SHACL:**
 
 ```turtle
@@ -177,30 +197,43 @@ sh:property [ sh:path ( :customIdToLicense :elementValue ) ;
     sh:or ( [ sh:class :CustomLicense ] [ sh:class :CustomLicenseAddition ] [ sh:class :SimpleLicensingText ] ) ] .
 ```
 
-### 4. Pattern
+#### 4. Pattern
 
 A `matches` predicate constrains a **literal** value (the path must end at a
 datatype-valued property). An optional `flags` clause maps to `sh:flags`
 (`i` case-insensitive, `m`, `s`, `x`).
 
 - **Syntax:** `` packageVerificationCodeExcludedFile matches `^\./` ``
-- **Section/File:** `## Constraints` · [Core/Classes/PackageVerificationCode.md][m-pvc]
+- **Section/File:** `## Constraints` ·
+  [Core/Classes/PackageVerificationCode.md][m-pvc]
 - **Provenance:** authored (new)
-- **Refs:** [PackageVerificationCode][m-pvc] · [packageVerificationCodeExcludedFile][m-pvcef] · [issue #980][i980]
+- **Refs:** [PackageVerificationCode][m-pvc] ·
+  [packageVerificationCodeExcludedFile][m-pvcef] ·
+  [issue #980][i980]
 - **Prose:** *Each packageVerificationCodeExcludedFile shall match `^\./`.*
-- **SHACL:** `sh:property [ sh:path :packageVerificationCodeExcludedFile ; sh:pattern "^\\./" ] .`
+- **SHACL:**
 
-#### 4b. Pattern over a path, case-insensitive (`customIdToLicense -> key`)
+  ```turtle
+  sh:property [ sh:path :packageVerificationCodeExcludedFile ;
+      sh:pattern "^\\./"] .
+  ```
 
-The `ElementMap` `key` reached through `customIdToLicense` is a license-expression
-reference, so it must begin with `LicenseRef-` or `AdditionRef-` — and the whole
-license expression is case-insensitive.
+##### 4b. Pattern over a path, case-insensitive (`customIdToLicense -> key`)
 
-- **Syntax:** `` customIdToLicense -> key matches `^(LicenseRef-|AdditionRef-)` flags i ``
-- **Section/File:** `## Constraints` · [SimpleLicensing/Properties/customIdToLicense.md][m-cidtolic] (alongside the rule 3 line)
+The `ElementMap` `key` reached through `customIdToLicense` is a
+license-expression reference, so it must begin with `LicenseRef-` or
+`AdditionRef-` — and the whole license expression is case-insensitive.
+
+- **Syntax:**
+  `` customIdToLicense -> key matches `^(LicenseRef-|AdditionRef-)` flags i ``
+- **Section/File:** `## Constraints` ·
+  [SimpleLicensing/Properties/customIdToLicense.md][m-cidtolic]
+  (alongside the rule 3 line)
 - **Provenance:** authored (new)
-- **Refs:** [customIdToLicense][m-cidtolic] · [ElementMap][m-elemmap] · [key][m-key]
-- **Prose:** *Each customIdToLicense's key shall match `^(LicenseRef-|AdditionRef-)` (case-insensitive).*
+- **Refs:** [customIdToLicense][m-cidtolic] ·
+  [ElementMap][m-elemmap] · [key][m-key]
+- **Prose:** *Each customIdToLicense's key shall match
+  `^(LicenseRef-|AdditionRef-)` (case-insensitive).*
 - **SHACL:**
 
 ```turtle
@@ -208,33 +241,51 @@ sh:property [ sh:path ( :customIdToLicense :key ) ;
     sh:pattern "^(LicenseRef-|AdditionRef-)" ; sh:flags "i" ] .
 ```
 
-### 5. Numeric range
+#### 5. Numeric range
 
 - **Syntax:** `cvssScore in 0..10` · `epssPercentile in 0..1`
-- **Section/File:** `## Constraints` · [Security/Classes/CvssV3VulnAssessmentRelationship.md][m-cvss3], [EpssVulnAssessmentRelationship][m-epss]
+- **Section/File:** `## Constraints` ·
+  [Security/Classes/CvssV3VulnAssessmentRelationship.md][m-cvss3],
+  [EpssVulnAssessmentRelationship][m-epss]
 - **Provenance:** authored (new)
-- **Refs:** [CvssV3VulnAssessmentRelationship][m-cvss3] · [EpssVulnAssessmentRelationship][m-epss] · [issue #988][i988]
+- **Refs:** [CvssV3VulnAssessmentRelationship][m-cvss3] ·
+  [EpssVulnAssessmentRelationship][m-epss] · [issue #988][i988]
 - **Prose:** *Each cvssScore shall be between 0 and 10.*
-- **SHACL:** `sh:property [ sh:path :cvssScore ; sh:minInclusive 0 ; sh:maxInclusive 10 ] .`
+- **SHACL:**
 
-### 6. Fixed value
+  ```turtle
+  sh:property [ sh:path :cvssScore ;
+      sh:minInclusive 0 ; sh:maxInclusive 10 ] .
+  ```
+
+#### 6. Fixed value
 
 - **Syntax:** `relationshipType is hasConcludedLicense`
-- **Section/File:** `## Constraints` · [Security/Classes/VexAffectedVulnAssessmentRelationship.md][m-vexaff]
+- **Section/File:** `## Constraints` ·
+  [Security/Classes/VexAffectedVulnAssessmentRelationship.md][m-vexaff]
 - **Provenance:** authored (new)
-- **Refs:** [VexAffectedVulnAssessmentRelationship][m-vexaff] · [relationshipType][m-reltype] · [issue #987][i987]
+- **Refs:** [VexAffectedVulnAssessmentRelationship][m-vexaff] ·
+  [relationshipType][m-reltype] · [issue #987][i987]
 - **Prose:** *The relationshipType shall be hasConcludedLicense.*
-- **SHACL:** `sh:property [ sh:path :relationshipType ; sh:hasValue :hasConcludedLicense ] .`
+- **SHACL:**
 
-## Tier 2 — `if … then …`
+  ```turtle
+  sh:property [ sh:path :relationshipType ;
+      sh:hasValue :hasConcludedLicense ] .
+  ```
 
-### 7. Conditional cardinality
+### Tier 2 — `if … then …`
+
+#### 7. Conditional cardinality
 
 - **Syntax:** `if element min 1 then rootElement min 1`
-- **Section/File:** `## Constraints` · [Core/Classes/ElementCollection.md][m-elemcoll]
+- **Section/File:** `## Constraints` ·
+  [Core/Classes/ElementCollection.md][m-elemcoll]
 - **Provenance:** authored (new)
-- **Refs:** [ElementCollection][m-elemcoll] · [element][m-element] · [rootElement][m-rootelem]
-- **Prose:** *If the ElementCollection has at least 1 element, it shall also have at least 1 rootElement.*
+- **Refs:** [ElementCollection][m-elemcoll] ·
+  [element][m-element] · [rootElement][m-rootelem]
+- **Prose:** *If the ElementCollection has at least 1 element, it
+  shall also have at least 1 rootElement.*
 - **SHACL:**
 
 ```turtle
@@ -242,12 +293,13 @@ sh:or ( [ sh:property [ sh:path :element ; sh:maxCount 0 ] ]
         [ sh:property [ sh:path :rootElement ; sh:minCount 1 ] ] ) .
 ```
 
-### 8. Value-presence → cardinality
+#### 8. Value-presence → cardinality
 
 - **Syntax:** `if to has /Core/NoneElement then to max 1`
 - **Section/File:** `## Constraints` · [Core/Classes/Relationship.md][m-rel]
 - **Provenance:** authored (new)
-- **Refs:** [Relationship][m-rel] · [to][m-to] · [NoneElement][m-none] · [issue #981][i981]
+- **Refs:** [Relationship][m-rel] · [to][m-to] ·
+  [NoneElement][m-none] · [issue #981][i981]
 - **Prose:** *If to includes NoneElement, to shall have at most 1 value.*
 - **SHACL:**
 
@@ -256,13 +308,16 @@ sh:or ( [ sh:not [ sh:property [ sh:path :to ; sh:hasValue :NoneElement ] ] ]
         [ sh:property [ sh:path :to ; sh:maxCount 1 ] ] ) .
 ```
 
-### 9. Conditional over predicates
+#### 9. Conditional over predicates
 
 - **Syntax:** `if cvssScore in 7.0..8.9 then cvssSeverity is high`
-- **Section/File:** `## Constraints` · [Security/Classes/CvssV3VulnAssessmentRelationship.md][m-cvss3]
+- **Section/File:** `## Constraints` ·
+  [Security/Classes/CvssV3VulnAssessmentRelationship.md][m-cvss3]
 - **Provenance:** authored (new) — one line per CVSS band
-- **Refs:** [CvssV3VulnAssessmentRelationship][m-cvss3] · [issue #988][i988]
-- **Prose:** *If cvssScore is between 7.0 and 8.9, then cvssSeverity shall be high.*
+- **Refs:** [CvssV3VulnAssessmentRelationship][m-cvss3] ·
+  [issue #988][i988]
+- **Prose:** *If cvssScore is between 7.0 and 8.9, then
+  cvssSeverity shall be high.*
 - **SHACL:**
 
 ```turtle
@@ -270,9 +325,9 @@ sh:or ( [ sh:not [ sh:property [ sh:path :cvssScore ; sh:minInclusive 7.0 ; sh:m
         [ sh:property [ sh:path :cvssSeverity ; sh:hasValue :high ] ] ) .
 ```
 
-## Tier 3 — vocabulary-driven
+### Tier 3 — vocabulary-driven
 
-### 10. Relationship `from` / `to`
+#### 10. Relationship `from` / `to`
 
 - **Syntax** (per vocabulary entry):
 
@@ -282,10 +337,16 @@ sh:or ( [ sh:not [ sh:property [ sh:path :cvssScore ; sh:minInclusive 7.0 ; sh:m
   - to: /Core/Annotation
 ```
 
-- **Section/File:** `## Entries` · [Core/Vocabularies/RelationshipType.md][m-reltypevocab]
-- **Provenance:** authored — and the **only** rule with an implemented (heuristic) `specmd migrate` assist from legacy prose; migrate output is reviewed/edited, not exact
-- **Refs:** [RelationshipType][m-reltypevocab] · [Relationship][m-rel] · [from][m-from] · [to][m-to]
-- **Prose:** *An amendedBy relationship's from shall be of type Element and not SpdxDocument; its to shall be of type Annotation.*
+- **Section/File:** `## Entries` ·
+  [Core/Vocabularies/RelationshipType.md][m-reltypevocab]
+- **Provenance:** authored — and the **only** rule with an
+  implemented (heuristic) `specmd migrate` assist from legacy
+  prose; migrate output is reviewed/edited, not exact
+- **Refs:** [RelationshipType][m-reltypevocab] ·
+  [Relationship][m-rel] · [from][m-from] · [to][m-to]
+- **Prose:** *An amendedBy relationship's from shall be of type
+  Element and not SpdxDocument; its to shall be of type
+  Annotation.*
 - **SHACL:**
 
 ```turtle
@@ -295,7 +356,7 @@ sh:or ( [ sh:not [ sh:property [ sh:path :cvssScore ; sh:minInclusive 7.0 ; sh:m
       sh:property [ sh:path :to   ; sh:class :Annotation ] ] ) .
 ```
 
-### 11. Per-entry `pattern` + selector binding
+#### 11. Per-entry `pattern` + selector binding
 
 - **Syntax** (entry pattern + class binding):
 
@@ -310,9 +371,15 @@ sh:or ( [ sh:not [ sh:property [ sh:path :cvssScore ; sh:minInclusive 7.0 ; sh:m
 - identifier matches externalIdentifierType
 ```
 
-- **Section/File:** `## Entries` · [Core/Vocabularies/ExternalIdentifierType.md][m-extidtype] **and** `## Constraints` · [Core/Classes/ExternalIdentifier.md][m-extid]
+- **Section/File:** `## Entries` ·
+  [Core/Vocabularies/ExternalIdentifierType.md][m-extidtype]
+  **and** `## Constraints` ·
+  [Core/Classes/ExternalIdentifier.md][m-extid]
 - **Provenance:** authored (new entry field + binding)
-- **Refs:** [ExternalIdentifier][m-extid] · [ExternalIdentifierType][m-extidtype] · [ContentIdentifier][m-contentid] · [issue #989][i989] · [issue #986][i986]
+- **Refs:** [ExternalIdentifier][m-extid] ·
+  [ExternalIdentifierType][m-extidtype] ·
+  [ContentIdentifier][m-contentid] ·
+  [issue #989][i989] · [issue #986][i986]
 - **Prose:** *Each identifier shall match the pattern of its externalIdentifierType.*
 - **SHACL** (one `sh:or` per entry):
 
@@ -322,7 +389,7 @@ sh:or ( [ sh:not [ sh:property [ sh:path :cvssScore ; sh:minInclusive 7.0 ; sh:m
     [ sh:property [ sh:path :identifier ; sh:pattern "^CVE-\\d{4}-\\d{4,}$" ] ] ) .
 ```
 
-## Tier 4 — conformance
+### Tier 4 — conformance
 
 A `## Profile conformance` block is a YAML list of rules. Every rule is gated on
 the profile (an `ElementCollection` whose `profileConformance` names it; an
@@ -342,7 +409,7 @@ predicate could anchor the existential (e.g. `from: artifact`); `linkedBy:` (the
 inverse-path anchor) superseded it, so `as:` is now **reserved** — still parsed,
 not emitted. Activation is implicit (it is this profile's block).
 
-### 12. Profile conformance — existential (`forEach` / `exists`)
+#### 12. Profile conformance — existential (`forEach` / `exists`)
 
 `exists` is any class; `linkedBy` is the property on it that points back to the
 subject (the inverse-path anchor); `in:` names the collection's membership
@@ -363,10 +430,19 @@ property.
 
 `count:` accepts `N`, `N..*`, or `N..M` → `sh:qualifiedMinCount`/`MaxCount`.
 
-- **Section/File:** `## Profile conformance` · [Licensing/Licensing.md][m-licensing]
-- **Provenance:** authored (legacy = prose in `## Profile conformance`, parsed-but-unused today)
-- **Refs:** [Licensing namespace][m-licensing] · [SoftwareArtifact][m-swartifact] · [Relationship][m-rel] · [AnyLicenseInfo][m-anylic] · [profileConformance][m-profconf] · [ElementCollection][m-elemcoll]
-- **Prose:** *If any ElementCollection declares conformance to the Licensing profile, then for every SoftwareArtifact among its members there shall exist exactly 1 Relationship (linked by from) satisfying: the relationshipType shall be hasConcludedLicense; each to shall be of type AnyLicenseInfo.*
+- **Section/File:** `## Profile conformance` ·
+  [Licensing/Licensing.md][m-licensing]
+- **Provenance:** authored (legacy = prose in `## Profile conformance`,
+  parsed-but-unused today)
+- **Refs:** [Licensing namespace][m-licensing] ·
+  [SoftwareArtifact][m-swartifact] · [Relationship][m-rel] ·
+  [AnyLicenseInfo][m-anylic] · [profileConformance][m-profconf] ·
+  [ElementCollection][m-elemcoll]
+- **Prose:** *If any ElementCollection declares conformance to the
+  Licensing profile, then for every SoftwareArtifact among its
+  members there shall exist exactly 1 Relationship (linked by from)
+  satisfying: the relationshipType shall be hasConcludedLicense;
+  each to shall be of type AnyLicenseInfo.*
 - **SHACL:**
 
 ```turtle
@@ -383,7 +459,7 @@ property.
             sh:qualifiedMinCount 1 ; sh:qualifiedMaxCount 1 ] ] ) ] ] ) ) .
 ```
 
-### 12b. Profile conformance — member-predicate (`forEach` + `where`, no `exists`)
+#### 12b. Profile conformance — member-predicate (`forEach` + `where`, no `exists`)
 
 Drop `exists`/`linkedBy` and `where:` applies to the **member** itself. Use it
 for profile-gated mandatory properties on a member class (e.g. Lite's
@@ -400,10 +476,15 @@ for profile-gated mandatory properties on a member class (e.g. Lite's
     - if downloadLocation max 0 then packageUrl min 1   # "at least one of … or …"
 ```
 
-- **Prose:** *If any ElementCollection declares conformance to the Lite profile, then every Package among its members shall satisfy: the Package shall have at least 1 copyrightText; …*
-- **SHACL:** per member, `sh:or ( [ sh:not [ sh:class :Package ] ] [ <where node shape> ] )` under `sh:path :element`, gated by the profile (same outer `sh:or` as 12).
+- **Prose:** *If any ElementCollection declares conformance to the
+  Lite profile, then every Package among its members shall satisfy:
+  the Package shall have at least 1 copyrightText; …*
+- **SHACL:** per member,
+  `sh:or ( [ sh:not [ sh:class :Package ] ] [ <where node shape> ] )`
+  under `sh:path :element`, gated by the profile
+  (same outer `sh:or` as 12).
 
-### 12c. Profile conformance — collection-self (`appliesTo` + `where`)
+#### 12c. Profile conformance — collection-self (`appliesTo` + `where`)
 
 No `forEach`; `where:` applies to the **collection itself** when it is an
 `appliesTo`. Use it for constraints on the collection node (e.g. Lite's
@@ -418,8 +499,13 @@ No `forEach`; `where:` applies to the **collection itself** when it is an
     - rootElement min 1
 ```
 
-- **Prose:** *An SpdxDocument declaring conformance to the Lite profile shall satisfy: the SpdxDocument shall have at least 1 element; the SpdxDocument shall have at least 1 rootElement.*
-- **SHACL:** targets `:SpdxDocument`; `sh:or ( [ <gate-not> ] [ <where node shape> ] )` — the active branch carries the `where` constraints directly (no membership wrapper).
+- **Prose:** *An SpdxDocument declaring conformance to the Lite
+  profile shall satisfy: the SpdxDocument shall have at least
+  1 element; the SpdxDocument shall have at least 1 rootElement.*
+- **SHACL:** targets `:SpdxDocument`;
+  `sh:or ( [ <gate-not> ] [ <where node shape> ] )` —
+  the active branch carries the `where` constraints directly
+  (no membership wrapper).
 
 These three modes together express the full Lite profile: licensing
 existentials (12), mandatory member properties incl. "at least one of A or B"
@@ -427,7 +513,7 @@ existentials (12), mandatory member properties incl. "at least one of A or B"
 be authored the same way (member-predicate + collection-self rules gated on an
 `ntia` profile entry).
 
-## Issue coverage
+### Issue coverage
 
 | Issue | Rule(s) |
 | - | - |
@@ -440,36 +526,7 @@ be authored the same way (member-predicate + collection-self rules gated on an
 
 ---
 
-# Changes from current code
-
-(Unchanged from the prior revision — summarized.)
-
-- **constraints.py**: `PathType(path, positives, negatives)` (drop whole-list
-  `negated`); add `pattern`, `range`, `fixed`, `present` predicate ASTs; per-item
-  `not`; mixed-polarity prose; `scope_property_path` prepends the property as the
-  first hop but tolerates an explicit one (`prop -> …`), shared by SHACL and prose.
-- **rdf.py**: replace single-namespace resolution with the contextual
-  type-walk; `_emit_class_choice` emits positives **and** negatives; new emitters
-  for `pattern`/`range`/`fixed`/`present`; `from`/`to` gains per-item `not`; new
-  vocabulary-`pattern` + binding emitter. New conformance (`forEach`) emitter
-  (3B): target the configured collection class, gate on the profile property,
-  universal over the `in:` membership filtered to `forEach`, inverse-path of
-  `linkedBy`, `sh:qualifiedValueShape` whose body is `sh:class <exists>` plus the
-  `where:` lines emitted via the existing `_emit_constraint`, and
-  `sh:qualifiedMin/MaxCount` from `count` (`N` / `N..*` / `N..M`). Track a
-  per-class set of already-emitted constraint ASTs and skip duplicates
-  (decision 3).
-- **model.py**: parse vocabulary entry `pattern`; parse the structured
-  `## Profile conformance` block (3B/2B keys) into `Namespace.conformance_rules`;
-  read the `conformance` config (`collection-class`, `profile-property`,
-  `profile` map, `prose` mode) from `specmd.yml`; validate property-file first
-  hop = the property.
-- **templates**: property pages use the same `constraint_prose` as classes;
-  render conformance prose on the namespace page.
-- **fixtures/tests/docs**: add a 2-namespace fixture; per-construct tests;
-  fold this spec into `format.md`/`design.md`.
-
-# Decisions
+## Design decisions
 
 1. **`not type` alias — KEEP.** `path not type <list>` stays as a readable alias
    for an all-negative class list, alongside per-item `not`.
@@ -492,10 +549,10 @@ be authored the same way (member-predicate + collection-self rules gated on an
 
 1. **Count grammar — `N` / `N..*` / `N..M`** → `sh:qualifiedMinCount`/`MaxCount`
    (same convention as cardinality, `*` = unbounded).
-2. **Membership property — 2B (per block `in:`).** Each conformance rule names
-   the collection→members property it iterates; the collection class and gate
+2. **Membership property — per block `in:`.** Each conformance rule names the
+   collection→members property it iterates; the collection class and gate
    property stay in config. Supports rules over different membership properties.
-3. **Existential — 3B (generalized).** `exists` is any class; `linkedBy` is the
+3. **Existential — generalized.** `exists` is any class; `linkedBy` is the
    inverse-path anchor; `where:` is a list of ordinary constraint expressions on
    the existential (reuses `parse_constraint` / `_emit_constraint`). `as:`
    (original subject binding, superseded by `linkedBy`) is reserved — parsed,
@@ -504,9 +561,7 @@ be authored the same way (member-predicate + collection-self rules gated on an
 4. **Prose vs structured — config `conformance.prose`** = `structured`
    (default) | `prose` | `both`. SHACL always derives from the structured block.
 
-All decisions are settled; the spec is implementation-ready.
-
-## Conformance gate (decision 4)
+### Conformance gate (decision 4)
 
 The `## Profile conformance` SHACL gate is `sh:hasValue <ProfileIdentifierType
 entry IRI>`. SpecMD needs to know *which* entry. Config maps each namespace's
@@ -528,12 +583,11 @@ conformance:
     Software: software
 ```
 
-Decisions **2B** and **3B** apply: the collection **class** and **gate
-property** are config (defaulting to SPDX, as above); the **membership
-property** is named per block as `in:`; the existential is generalized via
-`linkedBy` + a `where:` list of constraint expressions. `prose:` selects whether
-the structured block, the legacy free prose, or both are rendered (SHACL always
-comes from the structured block).
+The collection **class** and **gate property** are config (defaulting to SPDX,
+as above); the **membership property** is named per block as `in:`; the
+existential is generalized via `linkedBy` + a `where:` list of constraint
+expressions. `prose:` selects whether the structured block, the legacy free
+prose, or both are rendered (SHACL always comes from the structured block).
 
 `profileConformance` has at least one of the listed entries → the rule activates.
 
@@ -560,7 +614,7 @@ resolved. The `conformance.profile` config bridges the gap in the meantime (map
 `Licensing` to whichever entry, or both), and stays useful afterwards for any
 namespace whose name differs from its profile id.
 
-## Duplicate emission (decision 3 — explanation)
+### Duplicate emission (decision 3 — explanation)
 
 A **property-file** constraint is emitted on *every class that uses the
 property*; a **class-file** constraint is emitted on *that class*. If the same
@@ -582,7 +636,7 @@ already-emitted constraint ASTs and skips any repeat before emitting its
 `sh:property` shape. Clean output, near-zero cost, no false positives — only
 constraints that resolve to the identical AST collapse.
 
-## Interaction: constraints vs. model individuals
+### Interaction: constraints vs. model individuals
 
 SpecMD emits named individuals (`Individuals/*.md`) into the same graph the
 SHACL shapes validate, so **a class constraint must hold for the model's own

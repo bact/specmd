@@ -715,7 +715,7 @@ def _emit_selector_pattern(  # noqa: PLR0913
         consequent = BNode()
         cons_ps = BNode()
         g.add((consequent, SH.property, cons_ps))
-        _emit_path(g, cons_ps, hop_iris)  # type: ignore[arg-type]
+        _emit_path(g, cons_ps, hop_iris)
         g.add((cons_ps, SH["pattern"], Literal(str(pattern))))
         or_list = Collection(g, None)  # type: ignore[arg-type]
         or_list.append(not_branch)
@@ -908,9 +908,9 @@ def _emit_existential(model: Model, g: Graph, ns_name: str, rule: Conformance) -
     if exists is None or linked is None:
         return None
     qvs = _emit_where_shape(model, g, ns_name, rule.where, start_cls=exists_fq)
-    g.add((qvs, SH["class"], URIRef(exists)))  # type: ignore[arg-type]
+    g.add((qvs, SH["class"], URIRef(exists)))
     inv = BNode()
-    g.add((inv, SH["inversePath"], URIRef(linked)))  # type: ignore[arg-type]
+    g.add((inv, SH["inversePath"], URIRef(linked)))
     exist_ps = BNode()
     g.add((exist_ps, SH.path, inv))
     g.add((exist_ps, SH["qualifiedValueShape"], qvs))
@@ -961,14 +961,14 @@ def _emit_conformance_rule(  # noqa: PLR0913
             return
         # Per member: not a <for_each>  OR  the inner shape holds.
         nf_cls = BNode()
-        g.add((nf_cls, SH["class"], URIRef(for_each)))  # type: ignore[arg-type]
+        g.add((nf_cls, SH["class"], URIRef(for_each)))
         not_for_each = BNode()
         g.add((not_for_each, SH["not"], nf_cls))
         member_or = Collection(g, None)  # type: ignore[arg-type]
         member_or.append(not_for_each)
         member_or.append(inner)
         member_ps = BNode()
-        g.add((member_ps, SH.path, URIRef(membership)))  # type: ignore[arg-type]
+        g.add((member_ps, SH.path, URIRef(membership)))
         g.add((member_ps, SH["or"], member_or.uri))
         active = BNode()
         g.add((active, SH.property, member_ps))
