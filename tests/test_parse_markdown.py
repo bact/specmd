@@ -197,6 +197,16 @@ class TestSingleListSection:
         s = SingleListSection("- pattern: ``has`backtick``")
         assert s.kv["pattern"] == "has`backtick"
 
+    def test_autolink_url_unwrapped(self) -> None:
+        # markdownlint MD034 rewrites a bare URL `id: https://…` into `id: <https://…>`.
+        s = SingleListSection("- id: <https://example.org/rdf/terms/Lite>")
+        assert s.kv["id"] == "https://example.org/rdf/terms/Lite"
+
+    def test_non_url_angle_brackets_left_alone(self) -> None:
+        # Only autolinks (a URI scheme inside <>) are unwrapped, not arbitrary <…> text.
+        s = SingleListSection("- note: a <thing> here")
+        assert s.kv["note"] == "a <thing> here"
+
 
 class TestNestedListSection:
     def test_parses_nested(self) -> None:

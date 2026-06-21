@@ -16,3 +16,12 @@ Relationship is defined for the Lite fixture model.
 
 - name: Relationship
 - subClassOf: Element
+
+## Properties
+
+- from:
+  - minCount: 0
+- to:
+  - minCount: 0
+- relationshipType:
+  - minCount: 0

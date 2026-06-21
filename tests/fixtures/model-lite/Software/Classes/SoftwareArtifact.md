@@ -16,3 +16,10 @@ SoftwareArtifact is defined for the Lite fixture model.
 
 - name: SoftwareArtifact
 - subClassOf: /Core/Element
+
+## Properties
+
+- /Core/suppliedBy:
+  - minCount: 0
+- copyrightText:
+  - minCount: 0

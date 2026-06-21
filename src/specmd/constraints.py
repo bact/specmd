@@ -385,9 +385,31 @@ def prepend_path(ast: Constraint | None, hop: str) -> Constraint | None:
     return None
 
 
+def _ast_path(ast: Constraint | None) -> tuple[str, ...] | None:
+    """The path of a single-path constraint, or ``None`` for one without (e.g. :class:`Conditional`)."""
+    if isinstance(ast, (PathType, Pattern, Range, Fixed, Present, SelectorPattern)):
+        return ast.path
+    return None
+
+
+def scope_property_path(ast: Constraint | None, prop_name: str) -> Constraint | None:
+    """Scope a property's own constraint through *prop_name*.
+
+    The property name is prepended as the path's first hop — unless the author
+    already wrote it explicitly (``prop_name -> …``), in which case the AST is
+    returned unchanged. Returns ``None`` for constraints with no single path.
+    """
+    path = _ast_path(ast)
+    if path is None:
+        return None
+    if path and _short(path[0]) == prop_name:
+        return ast
+    return prepend_path(ast, prop_name)
+
+
 def property_constraint_to_prose(ast: Constraint | None, prop_name: str) -> str:
     """Render a property-level constraint, scoping the path through *prop_name*."""
-    scoped = prepend_path(ast, prop_name)
+    scoped = scope_property_path(ast, prop_name)
     return constraint_to_prose(scoped if scoped is not None else ast, prop_name)
 
 

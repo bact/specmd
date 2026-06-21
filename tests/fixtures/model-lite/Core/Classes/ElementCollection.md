@@ -23,3 +23,5 @@ ElementCollection is defined for the Lite fixture model.
   - minCount: 0
 - profileConformance:
   - minCount: 0
+- rootElement:
+  - minCount: 0

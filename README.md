@@ -206,10 +206,29 @@ vocabulary:                # vocabulary / relationship defaults
 
 rdf:
   filename: my-model       # output filename (no extension)
+
+conformance:               # drives SHACL from `## Profile conformance` blocks
+  collection-class: /Core/ElementCollection   # class the conformance shapes target
+  profile-property: /Core/profileConformance   # property that selects a profile
+  default-profile: core    # profile assumed when profileConformance is omitted
+  prose: structured        # structured (default) | prose | both
+  profile:                 # which profile id(s) each namespace's block gates on
+    Software: software
+    Licensing: [simpleLicensing, expandedLicensing]
 ```
 
-See [docs/format.md](docs/format.md#model-configuration-specmdyml) for
-the full reference.
+The `conformance` block turns structured `## Profile conformance` rules into
+SHACL (existential, member-predicate, and collection-self modes). The
+SPDX-3 defaults for `collection-class`, `profile-property`, and
+`default-profile` are shown; omit them for a non-SPDX model only if your terms
+differ. See
+[docs/constraints-spec.md](docs/constraints-spec.md#tier-4--conformance) for the
+rule syntax and [docs/format.md](docs/format.md#model-configuration-specmdyml)
+for the full configuration reference.
+
+**Linter-friendly input.** Model files survive a `markdownlint --fix` pass:
+IRI-bearing metadata such as `id:` accepts both a bare URL and the MD034
+autolink form (`id: <https://…>`), extracting the same IRI either way.
 
 ## spec-parser compatibility
 
@@ -275,6 +294,16 @@ pytest
 **identical JSON schema** to upstream spec-parser when both are fed through
 [shacl2code]. This test is skipped automatically when either dependency is
 absent, so it will not block a plain `pytest` run.
+
+**Still identical for legacy input.** The constraint and conformance features
+(type-scope, `if … then …`, profile conformance, etc.) are *additive* and only
+activate on the new `## Constraints` / `## Profile conformance` sections, which
+the legacy spec-parser Markdown does not contain. shacl2code's `jsonschema`
+generator also consumes only the structural shapes (class/property shapes,
+cardinality, datatype, `sh:in` enums) and ignores the extra constraint shapes
+SpecMD emits. So for spec-parser's legacy Markdown the two JSON schemas remain
+identical, and even a constraint-rich model would not change the generated
+schema.
 
 To run it, both tools must be reachable:
 

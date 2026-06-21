@@ -18,6 +18,7 @@ from specmd.constraints import (
     constraint_to_prose,
     count_bounds,
     parse_constraint,
+    scope_property_path,
 )
 from specmd.parse.markdown import ConstraintsSection
 
@@ -171,6 +172,26 @@ class TestConstraintProse:
         # Duplicates are removed at parse time, so the prose lists the class once.
         ast = parse_constraint("x type /Core/License, /Core/License")
         assert constraint_to_prose(ast, "C") == "Each x shall be of type License."
+
+
+class TestScopePropertyPath:
+    """Property-file constraints scope through the property name, tolerating an explicit first hop."""
+
+    def test_prepends_property_name(self) -> None:
+        ast = parse_constraint("key matches `^x`")
+        assert scope_property_path(ast, "customIdToLicense") == Pattern(path=("customIdToLicense", "key"), regex="^x")
+
+    def test_explicit_first_hop_not_doubled(self) -> None:
+        ast = parse_constraint("customIdToLicense -> key matches `^x`")
+        assert scope_property_path(ast, "customIdToLicense") == Pattern(path=("customIdToLicense", "key"), regex="^x")
+
+    def test_explicit_qualified_first_hop_not_doubled(self) -> None:
+        ast = parse_constraint("/Core/customIdToLicense -> key matches `^x`")
+        assert scope_property_path(ast, "customIdToLicense") == Pattern(path=("/Core/customIdToLicense", "key"), regex="^x")
+
+    def test_non_path_constraint_returns_none(self) -> None:
+        ast = parse_constraint("if element min 1 then rootElement min 1")
+        assert scope_property_path(ast, "element") is None
 
 
 class TestConstraintsSection:

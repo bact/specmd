@@ -46,7 +46,7 @@ specmd = "specmd.__main__:main"
 
 [dependency-groups]
 lint = ["flake8>=7.3.0", "pylint>=4.0.5", "ruff>=0.15.7"]
-test = ["coverage", "coveralls", "pytest>=9.0.2"]
+test = ["coverage", "coveralls", "pyshacl>=0.30", "pytest>=9.0.2"]
 typecheck = ["mypy>=1.19.1", "types-PyYAML", "types-Pygments", "types-pexpect"]
 dev = [
     "build",

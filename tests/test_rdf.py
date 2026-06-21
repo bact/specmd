@@ -179,8 +179,9 @@ class TestRDFSHACL:
 
 
 class TestJSONLDContext:
+    @staticmethod
     @pytest.fixture(scope="class")
-    def ctx(self, rdf_graph: Graph, model: Model) -> dict:
+    def ctx(rdf_graph: Graph, model: Model) -> dict:
         from specmd.generate.rdf import _jsonld_context
 
         return _jsonld_context(rdf_graph, model.base_uri)
@@ -515,6 +516,22 @@ class TestPatternConstraint:
         flags = {str(f) for f in rdf_graph.objects(found, SH["flags"])}
         assert patterns == {"^(LicenseRef-|AdditionRef-)"}
         assert flags == {"i"}
+
+    def test_duplicate_constraint_emitted_once(self, rdf_graph: Graph) -> None:
+        # Collection restates the property's own `customIdToLicense -> key` rule in its
+        # `## Constraints` (explicit first hop). AST-level dedup must keep a single shape.
+        from rdflib.collection import Collection as RDFList
+        from rdflib.namespace import RDF
+
+        coll = URIRef(CORE + "Collection")
+        matches = 0
+        for ps in rdf_graph.objects(coll, SH.property):
+            for path in rdf_graph.objects(ps, SH.path):
+                if (path, RDF.first, None) in rdf_graph:
+                    seq = [str(x) for x in RDFList(rdf_graph, path)]
+                    if seq == [CORE + "customIdToLicense", CORE + "key"] and list(rdf_graph.objects(ps, SH["pattern"])):
+                        matches += 1
+        assert matches == 1, f"expected one customIdToLicense -> key pattern shape, got {matches}"
 
 
 class TestRangeAndFixedConstraints:

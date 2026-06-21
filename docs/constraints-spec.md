@@ -6,11 +6,18 @@ SPDX-License-Identifier: CC0-1.0
 
 # SpecMD constraints — consolidated design spec
 
-Status: **all four tiers implemented** (predicates, `if … then …`,
-vocabulary-driven, conformance), tested and pySHACL-verified. Remaining
-cross-cutting items — the contextual type-walk resolver, explicit-first-hop on
-property files, and AST-level dedup — are not yet done (paths currently resolve
-within a single namespace; property constraints auto-prepend the property name).
+Status: **fully implemented** — all four tiers (predicates, `if … then …`,
+vocabulary-driven, conformance), the **contextual type-walk resolver**,
+**explicit-first-hop tolerance** on property files, and **AST-level dedup**;
+tested and pySHACL-verified (including a full end-to-end Lite profile fixture).
+Path hops resolve as properties of the class reached by the previous hop
+(`Class.all_properties`, spanning namespaces), so bare names work cross-namespace
+and only class/value terms need qualification. A property-file constraint scopes
+through the property name automatically, but the author may also write that hop
+explicitly (`prop -> …`) without it being doubled. Identical constraints are
+never emitted twice on the same class node. Authored input survives a
+`markdownlint --fix` pass: MD034 autolinks (`<https://…>`) are accepted wherever
+a bare URL is, and markdownlint's list-indentation is valid YAML.
 Unifies the constraint mechanisms (class `## Constraints`, property
 `## Constraints`, vocabulary `from`/`to`, `## Profile conformance`) into one
 model, and catalogs every rule with its SpecMD input, rendered prose, SHACL, and
@@ -439,8 +446,8 @@ be authored the same way (member-predicate + collection-self rules gated on an
 
 - **constraints.py**: `PathType(path, positives, negatives)` (drop whole-list
   `negated`); add `pattern`, `range`, `fixed`, `present` predicate ASTs; per-item
-  `not`; mixed-polarity prose; delete `property_constraint_to_prose` + the
-  auto-prepend (first hop is now explicit).
+  `not`; mixed-polarity prose; `scope_property_path` prepends the property as the
+  first hop but tolerates an explicit one (`prop -> …`), shared by SHACL and prose.
 - **rdf.py**: replace single-namespace resolution with the contextual
   type-walk; `_emit_class_choice` emits positives **and** negatives; new emitters
   for `pattern`/`range`/`fixed`/`present`; `from`/`to` gains per-item `not`; new

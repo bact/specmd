@@ -16,3 +16,12 @@ Package is defined for the Lite fixture model.
 
 - name: Package
 - subClassOf: /Software/SoftwareArtifact
+
+## Properties
+
+- downloadLocation:
+  - minCount: 0
+- packageUrl:
+  - minCount: 0
+- packageVersion:
+  - minCount: 0

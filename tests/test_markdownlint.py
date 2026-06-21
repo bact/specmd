@@ -1,6 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 
-"""Integration tests: generated Markdown output must pass markdownlint-cli2."""
+"""Integration tests for markdownlint-cli2 compatibility.
+
+Two directions:
+- generated Markdown *output* must pass markdownlint-cli2;
+- authored Markdown *input* must still parse identically after an author runs
+  ``markdownlint-cli2 --fix`` on it (formatting must not change the model).
+"""
 
 from __future__ import annotations
 
@@ -19,6 +25,7 @@ from specmd.parse.model import Model
 # ---------------------------------------------------------------------------
 
 FIXTURE_MODEL = Path(__file__).parent / "fixtures" / "model"
+FIXTURE_MODEL_LITE = Path(__file__).parent / "fixtures" / "model-lite"
 MARKDOWNLINT = "markdownlint-cli2"
 
 
@@ -86,3 +93,38 @@ class TestMarkdownlint:
     def test_singlefile_output_passes_markdownlint(self, tmp_path: Path) -> None:
         result = self._lint(self._gen_singlefile(tmp_path))
         assert result.returncode == 0, f"markdownlint errors:\n{result.stdout}{result.stderr}"
+
+
+@pytest.mark.skipif(not _markdownlint_available(), reason="markdownlint-cli2 not installed")
+@pytest.mark.parametrize("fixture", [FIXTURE_MODEL, FIXTURE_MODEL_LITE], ids=["model", "model-lite"])
+class TestMarkdownlintInputRoundtrip:
+    """``markdownlint-cli2 --fix`` on authored input must not change the parsed model."""
+
+    def test_fix_preserves_rdf(self, tmp_path: Path, fixture: Path) -> None:
+        from rdflib.compare import graph_diff, isomorphic
+
+        from specmd.generate.rdf import gen_rdf_ontology
+
+        orig = tmp_path / "orig"
+        fixed = tmp_path / "fixed"
+        shutil.copytree(fixture, orig)
+        shutil.copytree(fixture, fixed)
+
+        g_before = gen_rdf_ontology(Model(orig))
+        # --fix returns non-zero when it applies fixes; that is expected, not a failure.
+        subprocess.run(  # noqa: S603
+            [MARKDOWNLINT, "--fix", "**/*.md"],
+            cwd=fixed,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        g_after = gen_rdf_ontology(Model(fixed))
+
+        if not isomorphic(g_before, g_after):
+            in_before, in_after = graph_diff(g_before, g_after)[1:]
+            pytest.fail(
+                "markdownlint --fix changed the parsed model.\n"
+                f"only before ({len(in_before)}): {list(in_before)[:5]}\n"
+                f"only after ({len(in_after)}): {list(in_after)[:5]}"
+            )

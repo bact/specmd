@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 from rdflib import Graph, Literal, URIRef
-from rdflib.namespace import RDF
+from rdflib.namespace import RDF, XSD
 
 from specmd.generate.rdf import gen_rdf_ontology
 from specmd.parse.model import Model
@@ -66,7 +66,7 @@ def _good_graph() -> Graph:
     g.add((pkg, s("copyrightText"), Literal("(c) ACME")))
     g.add((pkg, s("packageVersion"), Literal("1.0.0")))
     g.add((pkg, c("suppliedBy"), agent))
-    g.add((pkg, s("downloadLocation"), Literal("https://example.org/pkg.tgz")))
+    g.add((pkg, s("downloadLocation"), Literal("https://example.org/pkg.tgz", datatype=XSD.anyURI)))
 
     g.add((agent, RDF.type, c("Agent")))
     g.add((agent, c("name"), Literal("ACME Corp")))
@@ -107,7 +107,7 @@ def test_packageurl_satisfies_disjunction(shapes: Graph) -> None:
     # Dropping downloadLocation but supplying packageUrl must still conform.
     g = _good_graph()
     g.remove((URIRef("urn:pkg"), s("downloadLocation"), None))
-    g.add((URIRef("urn:pkg"), s("packageUrl"), Literal("pkg:generic/acme@1.0.0")))
+    g.add((URIRef("urn:pkg"), s("packageUrl"), Literal("pkg:generic/acme@1.0.0", datatype=XSD.anyURI)))
     conforms, text = _conforms(shapes, g)
     assert conforms, text
 
@@ -150,3 +150,42 @@ def test_non_lite_collection_is_unconstrained(shapes: Graph) -> None:
     g.add((pkg, RDF.type, s("Package")))  # bare Package, no mandatory props
     conforms, text = _conforms(shapes, g)
     assert conforms, text
+
+
+def test_autolinked_namespace_id_resolves_clean() -> None:
+    # Lite.md was formatted by markdownlint, so its `id:` is an MD034 autolink
+    # (`<https://…>`); the parsed namespace IRI must not keep the angle brackets.
+    model = Model(FIXTURE)
+    lite = next(ns for ns in model.namespaces if ns.name == "Lite")
+    assert lite.iri == "https://example.org/rdf/terms/Lite"
+
+
+class TestContextualTypeWalk:
+    """``_walk_path`` resolves bare hops as properties of the class reached so far."""
+
+    def test_bare_hop_in_subject_namespace(self) -> None:
+        from specmd.generate.rdf import _walk_path
+
+        model = Model(FIXTURE)
+        iris, last = _walk_path(model, "Lite", ("copyrightText",), start_cls="/Software/Package")
+        assert iris == [SW + "copyrightText"]
+        assert last == "/Software/copyrightText"
+
+    def test_bare_hop_resolves_cross_namespace(self) -> None:
+        # `suppliedBy` is declared on SoftwareArtifact as the Core property -- the
+        # walk must reach it even though the subject class lives in Software.
+        from specmd.generate.rdf import _walk_path
+
+        model = Model(FIXTURE)
+        iris, last = _walk_path(model, "Lite", ("suppliedBy",), start_cls="/Software/Package")
+        assert iris == [CORE + "suppliedBy"]
+        assert last == "/Core/suppliedBy"
+
+    def test_unknown_hop_without_context_fails(self) -> None:
+        # No class context and not a property of the file namespace -> unresolved.
+        from specmd.generate.rdf import _walk_path
+
+        model = Model(FIXTURE)
+        iris, last = _walk_path(model, "Lite", ("copyrightText",))
+        assert iris is None
+        assert last is None
