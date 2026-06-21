@@ -15,7 +15,7 @@ The NoneElement individual is used when no specific element applies.
 ## Metadata
 
 - name: NoneElement
-- type: Tool
+- type: IndividualElement
 - iri: https://example.org/rdf/terms/Core/NoneElement
 
 ## Property Values

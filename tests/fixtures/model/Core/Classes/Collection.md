@@ -25,10 +25,19 @@ Collection gathers a set of elements and may designate one or more as roots.
   - minCount: 0
 - customIdToLicense:
   - minCount: 0
+- score:
+  - minCount: 0
+  - maxCount: 1
+- supportLevel:
+  - minCount: 0
+  - maxCount: 1
 
 ## Constraints
 
 - if element min 1 then rootElement min 1
 - element not type Agent
 - rootElement not type Agent
-- customIdToLicense / elementValue type Tool, ElementMap
+- score in 0..10
+- supportLevel is noSupport
+- if score in 5..10 then rootElement min 1
+- customIdToLicense -> key matches `^(LicenseRef-|AdditionRef-)` flags i

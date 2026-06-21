@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from rdflib import Graph, URIRef
@@ -179,8 +180,9 @@ class TestRDFSHACL:
 
 
 class TestJSONLDContext:
+    @staticmethod
     @pytest.fixture(scope="class")
-    def ctx(self, rdf_graph: Graph, model: Model) -> dict:
+    def ctx(rdf_graph: Graph, model: Model) -> dict:
         from specmd.generate.rdf import _jsonld_context
 
         return _jsonld_context(rdf_graph, model.base_uri)
@@ -327,30 +329,53 @@ class TestNegatedPathType:
         assert URIRef(CORE + "rootElement") in forbidden_paths
 
 
+class TestConditionalValuePresence:
+    """``if to has NoneElement then to max 1`` -> ``sh:or([sh:not[hasValue]], [maxCount 1])``."""
+
+    def test_presence_conditional(self, rdf_graph: Graph) -> None:
+        from rdflib.collection import Collection as RDFList
+
+        rel = URIRef(CORE + "Relationship")
+        none = URIRef(CORE + "NoneElement")
+        to = URIRef(CORE + "to")
+        found_ante = found_cons = False
+        for or_list in rdf_graph.objects(rel, SH["or"]):
+            for b in RDFList(rdf_graph, or_list):
+                for inner in rdf_graph.objects(b, SH["not"]):
+                    for ps in rdf_graph.objects(inner, SH.property):
+                        if to in set(rdf_graph.objects(ps, SH.path)) and (ps, SH["hasValue"], none) in rdf_graph:
+                            found_ante = True
+                for ps in rdf_graph.objects(b, SH.property):
+                    if to in set(rdf_graph.objects(ps, SH.path)) and [int(str(m)) for m in rdf_graph.objects(ps, SH.maxCount)] == [1]:
+                        found_cons = True
+        assert found_ante, "missing sh:not[to hasValue NoneElement]"
+        assert found_cons, "missing to maxCount 1 consequent"
+
+
 class TestConditionalCardinality:
     """Class-level ``if X min m then Y min n`` -> ``sh:or``."""
 
     def test_cond_card_emits_sh_or(self, rdf_graph: Graph) -> None:
         from rdflib.collection import Collection as RDFList
 
-        coll = URIRef(CORE + "Collection")
-        or_lists = list(rdf_graph.objects(coll, SH["or"]))
-        assert or_lists, "no sh:or on Collection"
-        branches = list(RDFList(rdf_graph, or_lists[0]))
+        def _min1(ps: Any, prop: str) -> bool:
+            return URIRef(CORE + prop) in set(rdf_graph.objects(ps, SH.path)) and [int(str(m)) for m in rdf_graph.objects(ps, SH.minCount)] == [
+                1
+            ]
 
-        # branch 1: element maxCount 0 ; branch 2: rootElement minCount 1
+        coll = URIRef(CORE + "Collection")
         found_ante = found_cons = False
-        for b in branches:
-            for ps in rdf_graph.objects(b, SH.property):
-                paths = set(rdf_graph.objects(ps, SH.path))
-                maxes = [int(m) for m in rdf_graph.objects(ps, SH.maxCount)]
-                mins = [int(m) for m in rdf_graph.objects(ps, SH.minCount)]
-                if URIRef(CORE + "element") in paths and maxes == [0]:
-                    found_ante = True
-                if URIRef(CORE + "rootElement") in paths and mins == [1]:
+        for or_list in rdf_graph.objects(coll, SH["or"]):
+            for b in RDFList(rdf_graph, or_list):
+                # antecedent: sh:not [ element minCount 1 ]
+                for inner in rdf_graph.objects(b, SH["not"]):
+                    if any(_min1(ps, "element") for ps in rdf_graph.objects(inner, SH.property)):
+                        found_ante = True
+                # consequent: rootElement minCount 1
+                if any(_min1(ps, "rootElement") for ps in rdf_graph.objects(b, SH.property)):
                     found_cons = True
-        assert found_ante, "missing antecedent branch (element maxCount 0)"
-        assert found_cons, "missing consequent branch (rootElement minCount 1)"
+        assert found_ante, "missing antecedent branch sh:not[element minCount 1]"
+        assert found_cons, "missing consequent branch rootElement minCount 1"
 
 
 class TestPathTypeConstraint:
@@ -358,7 +383,6 @@ class TestPathTypeConstraint:
 
     def test_sequence_path_and_class_or(self, rdf_graph: Graph) -> None:
         from rdflib.collection import Collection as RDFList
-        from rdflib.namespace import RDF
 
         coll = URIRef(CORE + "Collection")
         found = None
@@ -377,3 +401,198 @@ class TestPathTypeConstraint:
                 allowed |= set(rdf_graph.objects(branch, SH["class"]))
         assert URIRef(CORE + "Tool") in allowed
         assert URIRef(CORE + "ElementMap") in allowed
+
+
+class TestConformanceShape:
+    """Structured ``## Profile conformance`` -> inverse-path + qualified value shape on ElementCollection."""
+
+    def test_qualified_existential(self, rdf_graph: Graph) -> None:
+        rel = URIRef(CORE + "Relationship")
+        from_p = URIRef(CORE + "from")
+        found = False
+        for ps, qvs in rdf_graph.subject_objects(SH["qualifiedValueShape"]):
+            paths = list(rdf_graph.objects(ps, SH.path))
+            inverse = bool(paths) and (paths[0], SH["inversePath"], from_p) in rdf_graph
+            is_rel = (qvs, SH["class"], rel) in rdf_graph
+            qmin = [int(str(m)) for m in rdf_graph.objects(ps, SH["qualifiedMinCount"])]
+            qmax = [int(str(m)) for m in rdf_graph.objects(ps, SH["qualifiedMaxCount"])]
+            if inverse and is_rel and qmin == [1] and qmax == [1]:
+                found = True
+        assert found, "no inverse-from qualifiedValueShape(Relationship) with exactly-one count"
+
+    def test_default_profile_gate_requires_presence(self, rdf_graph: Graph) -> None:
+        # conformance.default-profile=core -> the gate also requires profileConformance present,
+        # so an omitted value (defaulting to core) still activates the rule.
+        pc = URIRef(CORE + "profileConformance")
+        found = any([int(str(m)) for m in rdf_graph.objects(ps, SH.minCount)] == [1] for ps in rdf_graph.subjects(SH.path, pc))
+        assert found, "default-profile gate missing sh:minCount 1 on profileConformance"
+
+    def test_member_predicate_rule(self, rdf_graph: Graph) -> None:
+        # `forEach SoftwareArtifact in element where name min 1` (no `exists`) ->
+        # per-member sh:or([not SoftwareArtifact], [sh:property name minCount 1]).
+        from rdflib.collection import Collection as RDFList
+
+        sa = URIRef(CORE + "SoftwareArtifact")
+        element = URIRef(CORE + "element")
+        name = URIRef(CORE + "name")
+        found = False
+        for member_ps in rdf_graph.subjects(SH.path, element):
+            for or_list in rdf_graph.objects(member_ps, SH["or"]):
+                branches = list(RDFList(rdf_graph, or_list))
+                negates_sa = any((cls, SH["class"], sa) in rdf_graph for b in branches for cls in rdf_graph.objects(b, SH["not"]))
+                requires_name = any(
+                    name in set(rdf_graph.objects(ps, SH.path)) and [int(str(c)) for c in rdf_graph.objects(ps, SH.minCount)] == [1]
+                    for b in branches
+                    for ps in rdf_graph.objects(b, SH.property)
+                )
+                if negates_sa and requires_name:
+                    found = True
+        assert found, "no member-predicate rule: SoftwareArtifact member requires name minCount 1"
+
+    def test_collection_self_rule(self, rdf_graph: Graph) -> None:
+        # `appliesTo ElementCollection where element min 1; rootElement min 1` ->
+        # an sh:or branch on ElementCollection requiring both directly (no membership wrapper).
+        from rdflib.collection import Collection as RDFList
+
+        ec = URIRef(CORE + "ElementCollection")
+        element = URIRef(CORE + "element")
+        root = URIRef(CORE + "rootElement")
+        found = False
+        for or_list in rdf_graph.objects(ec, SH["or"]):
+            for branch in RDFList(rdf_graph, or_list):
+                mins = {
+                    path: [int(str(c)) for c in rdf_graph.objects(ps, SH.minCount)]
+                    for ps in rdf_graph.objects(branch, SH.property)
+                    for path in rdf_graph.objects(ps, SH.path)
+                }
+                if mins.get(element) == [1] and mins.get(root) == [1]:
+                    found = True
+        assert found, "no collection-self rule requiring element and rootElement minCount 1"
+
+
+class TestSelectorPattern:
+    """``identifier matches externalIdentifierType`` -> per-entry guarded ``sh:pattern``."""
+
+    def test_pattern_per_entry(self, rdf_graph: Graph) -> None:
+        from rdflib.collection import Collection as RDFList
+
+        ei = URIRef(CORE + "ExternalIdentifier")
+        cve = URIRef(CORE + "ExternalIdentifierType/cve")
+        identifier = URIRef(CORE + "identifier")
+        found = False
+        for or_list in rdf_graph.objects(ei, SH["or"]):
+            branches = list(RDFList(rdf_graph, or_list))
+            keys_off_cve = any(
+                (ps, SH["hasValue"], cve) in rdf_graph
+                for b in branches
+                for n in rdf_graph.objects(b, SH["not"])
+                for ps in rdf_graph.objects(n, SH.property)
+            )
+            has_identifier_pattern = any(
+                identifier in set(rdf_graph.objects(ps, SH.path)) and list(rdf_graph.objects(ps, SH["pattern"]))
+                for b in branches
+                for ps in rdf_graph.objects(b, SH.property)
+            )
+            if keys_off_cve and has_identifier_pattern:
+                found = True
+        assert found, "no per-entry sh:pattern guarded by externalIdentifierType = cve"
+
+
+class TestPatternConstraint:
+    """``<path> matches `regex` flags i`` -> sequence path + ``sh:pattern`` + ``sh:flags``."""
+
+    def test_pattern_with_flags_on_path(self, rdf_graph: Graph) -> None:
+        from rdflib.collection import Collection as RDFList
+
+        coll = URIRef(CORE + "Collection")
+        found = None
+        for ps in rdf_graph.objects(coll, SH.property):
+            for path in rdf_graph.objects(ps, SH.path):
+                if (path, RDF.first, None) in rdf_graph:
+                    seq = [str(x) for x in RDFList(rdf_graph, path)]
+                    if seq == [CORE + "customIdToLicense", CORE + "key"]:
+                        found = ps
+        assert found is not None, "no sequence path customIdToLicense -> key"
+        patterns = {str(p) for p in rdf_graph.objects(found, SH["pattern"])}
+        flags = {str(f) for f in rdf_graph.objects(found, SH["flags"])}
+        assert patterns == {"^(LicenseRef-|AdditionRef-)"}
+        assert flags == {"i"}
+
+    def test_duplicate_constraint_emitted_once(self, rdf_graph: Graph) -> None:
+        # Collection restates the property's own `customIdToLicense -> key` rule in its
+        # `## Constraints` (explicit first hop). AST-level dedup must keep a single shape.
+        from rdflib.collection import Collection as RDFList
+
+        coll = URIRef(CORE + "Collection")
+        matches = 0
+        for ps in rdf_graph.objects(coll, SH.property):
+            for path in rdf_graph.objects(ps, SH.path):
+                if (path, RDF.first, None) in rdf_graph:
+                    seq = [str(x) for x in RDFList(rdf_graph, path)]
+                    if seq == [CORE + "customIdToLicense", CORE + "key"] and list(rdf_graph.objects(ps, SH["pattern"])):
+                        matches += 1
+        assert matches == 1, f"expected one customIdToLicense -> key pattern shape, got {matches}"
+
+
+class TestRangeAndFixedConstraints:
+    """``<path> in M..N`` -> ``sh:minInclusive``/``sh:maxInclusive``; ``<path> = v`` -> ``sh:hasValue``."""
+
+    def test_numeric_range(self, rdf_graph: Graph) -> None:
+        coll = URIRef(CORE + "Collection")
+        bounds = set()
+        for ps in rdf_graph.objects(coll, SH.property):
+            if URIRef(CORE + "score") in set(rdf_graph.objects(ps, SH.path)):
+                lo = list(rdf_graph.objects(ps, SH.minInclusive))
+                hi = list(rdf_graph.objects(ps, SH.maxInclusive))
+                if lo and hi:
+                    bounds.add((int(str(lo[0])), int(str(hi[0]))))
+        assert bounds == {(0, 10)}
+
+    def test_fixed_value(self, rdf_graph: Graph) -> None:
+        coll = URIRef(CORE + "Collection")
+        none_support = URIRef(CORE + "SupportType/noSupport")
+        found = any(
+            URIRef(CORE + "supportLevel") in set(rdf_graph.objects(ps, SH.path)) and (ps, SH["hasValue"], none_support) in rdf_graph
+            for ps in rdf_graph.objects(coll, SH.property)
+        )
+        assert found, "no sh:hasValue noSupport on supportLevel"
+
+
+class TestRelationshipConstraints:
+    """Relationship-vocab ``from``/``to`` -> SHACL endpoint typing scoped by ``relationshipType``."""
+
+    def test_endpoint_typing_scoped_by_relationship_type(self, rdf_graph: Graph) -> None:
+        from rdflib.collection import Collection as RDFList
+
+        rel = URIRef(CORE + "Relationship")
+        rtype = URIRef(CORE + "RelationshipType/toolUsedBy")
+
+        # Find the sh:or whose negated branch keys off relationshipType = toolUsedBy.
+        target = None
+        for or_list in rdf_graph.objects(rel, SH["or"]):
+            branches = list(RDFList(rdf_graph, or_list))
+            keys_off = any(
+                (ps, SH["hasValue"], rtype) in rdf_graph
+                for b in branches
+                for n in rdf_graph.objects(b, SH["not"])
+                for ps in rdf_graph.objects(n, SH.property)
+            )
+            if keys_off:
+                target = branches
+        assert target is not None, "no relationship constraint scoped to toolUsedBy"
+
+        # The consequent branch must require from -> Tool, to -> Agent, and to NOT Collection.
+        endpoints = {}
+        to_neg = set()
+        for b in target:
+            for ps in rdf_graph.objects(b, SH.property):
+                paths = set(rdf_graph.objects(ps, SH.path))
+                classes = set(rdf_graph.objects(ps, SH["class"]))
+                if URIRef(CORE + "from") in paths:
+                    endpoints["from"] = classes
+                if URIRef(CORE + "to") in paths:
+                    endpoints["to"] = classes
+                    to_neg = {cl for n in rdf_graph.objects(ps, SH["not"]) for cl in rdf_graph.objects(n, SH["class"])}
+        assert endpoints.get("from") == {URIRef(CORE + "Tool")}
+        assert endpoints.get("to") == {URIRef(CORE + "Agent")}
+        assert to_neg == {URIRef(CORE + "Collection")}

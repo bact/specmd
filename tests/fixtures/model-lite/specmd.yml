@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: CC0-1.0
+# specmd.yml -- Lite profile end-to-end test fixture
+
+license: CC0-1.0
+base-uri: https://example.org/rdf/terms/
+
+namespace-order:
+  - Core
+  - Software
+  - Lite
+
+ontology:
+  preferred-namespace-prefix: core
+  label: Lite Fixture Ontology
+  title: Lite Fixture Ontology
+  abstract: Test fixture exercising the full Lite profile conformance block.
+  creator: SpecMD Test Suite
+  license-uri: https://creativecommons.org/publicdomain/zero/1.0/
+  references: https://github.com/bact/specmd/
+  copyright: Copyright (C) SpecMD Contributors
+
+rdf:
+  filename: lite-fixture
+  context-filename: lite-fixture-context
+
+conformance:
+  collection-class: /Core/ElementCollection
+  default-profile: core
+  profile-property: /Core/profileConformance
+  prose: structured
+  profile:
+    Lite: lite

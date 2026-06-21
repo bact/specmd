@@ -21,7 +21,7 @@ RelationshipType is a vocabulary of directed relationships between software elem
 - affects:
   - description: The from Vulnerability, Action or DefinedProcess affects each to Element.
   - from:
-    - Vulnerability
+    - Vulnerability[unknownQualifierProp=x]
     - Action
     - DefinedProcess
   - to: Element
@@ -40,3 +40,15 @@ RelationshipType is a vocabulary of directed relationships between software elem
   - to:
     - Relationship[relationshipType=invokedBy]
   - relationshipClass: LifecycleScopedRelationship
+- toolUsedBy:
+  - description: The from Tool is used by the to Agent.
+  - from: Tool
+  - to:
+    - Agent
+    - not Collection
+  - relationshipClass: Relationship
+- hasConcludedLicense:
+  - description: The from SoftwareArtifact has the to AnyLicenseInfo as its concluded license.
+  - from: SoftwareArtifact
+  - to: AnyLicenseInfo
+  - relationshipClass: Relationship

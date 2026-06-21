@@ -31,6 +31,16 @@ _RE_KV_LINE = re.compile(r"^(\s*-\s+)(\w[\w/]*\s*:[ \t]*)(.+)$", re.MULTILINE)
 # Keys whose values may legitimately be YAML inline lists (e.g. ``[Agent, Tool]``).
 _YAML_LIST_KEYS: frozenset[str] = frozenset(("from", "to"))
 
+# A CommonMark autolink wrapping a URI: ``<scheme:...>``. Markdownlint's MD034
+# (no-bare-urls) rewrites a bare URL into this form, so accept either spelling.
+_RE_AUTOLINK = re.compile(r"^<([a-zA-Z][a-zA-Z0-9+.-]*:[^>\s]+)>$")
+
+
+def _strip_autolink(value: str) -> str:
+    """Unwrap a CommonMark autolink (``<https://…>`` → ``https://…``) so MD034-formatted URLs parse."""
+    m = _RE_AUTOLINK.match(value.strip())
+    return m.group(1) if m else value
+
 
 def _backtick_to_single_quoted(m: re.Match[str]) -> str:
     """Convert a backtick-wrapped YAML value to a YAML single-quoted string."""
@@ -247,7 +257,7 @@ class SingleListSection(Section):
                 logger.error(self._fmt_err_msg("expected single-key mapping '- key: value'", f"got {n}: {item!r}"))
                 continue
             ((k, v),) = item.items()
-            self.kv[k] = str(v) if v is not None else ""
+            self.kv[k] = _strip_autolink(str(v)) if v is not None else ""
 
 
 _DEFAULT_FROM: list[str] = ["Element"]

@@ -25,3 +25,11 @@ rdf:
 plantuml:
   title: Core Fixture Model
   scale: 2000*2000
+
+conformance:
+  collection-class: /Core/ElementCollection
+  default-profile: core
+  profile-property: /Core/profileConformance
+  prose: structured
+  profile:
+    Core: core

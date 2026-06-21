@@ -18,13 +18,13 @@ class TestModelLoading:
         assert model.namespaces[0].name == "Core"
 
     def test_class_count(self, model: Model) -> None:
-        assert len(model.classes) == 5
+        assert len(model.classes) == 11
 
     def test_property_count(self, model: Model) -> None:
-        assert len(model.properties) == 8
+        assert len(model.properties) == 16
 
     def test_vocabulary_count(self, model: Model) -> None:
-        assert len(model.vocabularies) == 3
+        assert len(model.vocabularies) == 5
 
     def test_simple_vocab_is_not_relationship_vocab(self, model: Model) -> None:
         vocab = model.vocabularies["/Core/SupportType"]
@@ -39,6 +39,29 @@ class TestModelLoading:
 
     def test_individual_count(self, model: Model) -> None:
         assert len(model.individuals) == 1
+
+    def test_conformance_block_parsed(self, model: Model) -> None:
+        rules = model.namespaces[0].conformance_rules
+        assert len(rules) == 3
+        # Existential rule.
+        rule = rules[0]
+        assert rule.for_each == "/Core/SoftwareArtifact"
+        assert rule.membership == "element"
+        assert rule.exists == "/Core/Relationship"
+        assert rule.count == "1"
+        assert rule.linked_by == "from"
+        assert rule.where == ("relationshipType is hasConcludedLicense", "to type /Core/AnyLicenseInfo")
+        # Member-predicate rule (no exists).
+        member = rules[1]
+        assert member.for_each == "/Core/SoftwareArtifact"
+        assert member.membership == "element"
+        assert member.exists == ""
+        assert member.where == ("name min 1",)
+        # Collection-self rule (appliesTo).
+        self_rule = rules[2]
+        assert self_rule.applies_to == "/Core/ElementCollection"
+        assert self_rule.for_each == ""
+        assert self_rule.where == ("element min 1", "rootElement min 1")
 
     def test_base_uri(self, model: Model) -> None:
         # fixture specmd.yml sets base-uri: https://example.org/rdf/terms/
@@ -204,7 +227,7 @@ class TestVocabEntryValidation:
         assert "unknown class" in caplog.text
 
     def test_unknown_qualifier_prop_warns(self, model: Model, caplog: pytest.LogCaptureFixture) -> None:
-        # 'relationshipType' is not a property in the fixture model
+        # 'affects' from-class carries the qualifier Vulnerability[unknownQualifierProp=x]
         with caplog.at_level(logging.WARNING, logger="specmd.parse.model"):
             model.validate_vocab_entries()
         assert "unknown property" in caplog.text

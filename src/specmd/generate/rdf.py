@@ -8,8 +8,9 @@ from __future__ import annotations
 import logging
 import re
 import warnings
+from decimal import Decimal
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 import rfc8785
 from rdflib import BNode, Graph, Literal, Namespace, URIRef
@@ -17,13 +18,26 @@ from rdflib.collection import Collection
 from rdflib.namespace import DCTERMS, OWL, RDF, RDFS, SH, SKOS, VANN
 from rdflib.tools.rdf2dot import rdf2dot
 
-from specmd.constraints import CondCard, PathType, parse_constraint
+from specmd.constraints import (
+    Cardinality,
+    Conditional,
+    Conformance,
+    Fixed,
+    PathType,
+    Pattern,
+    Present,
+    Range,
+    SelectorPattern,
+    count_bounds,
+    parse_constraint,
+    scope_property_path,
+)
 from specmd.parse.model import PropertyNature
 
 if TYPE_CHECKING:
     from rdflib.term import Node
 
-    from specmd.parse.model import Class, Model
+    from specmd.parse.model import Class, Model, Property
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +49,8 @@ _RE_MD_LINK_EXT = re.compile(r"\[([^\]]+)\]\((https?://[^)]+)\)")
 _RE_MD_LINK_INT = re.compile(r"\[([^\]]+)\]\([^)]+\)")
 _RE_MD_CODE_BLOCK = re.compile(r"```[^\n]*\n(.*?)```", re.DOTALL)
 _RE_MD_INLINE_CODE = re.compile(r"`([^`]+)`")
+# CommonMark autolink ``<scheme:...>`` (markdownlint MD034 rewrites bare URLs into this).
+_RE_MD_AUTOLINK = re.compile(r"<([a-zA-Z][a-zA-Z0-9+.-]*:[^>\s]+)>")
 
 
 def _md_to_text(md: str | None) -> str:
@@ -42,6 +58,7 @@ def _md_to_text(md: str | None) -> str:
     if not md:
         return ""
     text = _RE_MD_CODE_BLOCK.sub(r"\1", md)
+    text = _RE_MD_AUTOLINK.sub(r"\1", text)  # unwrap MD034 autolinks before re-emitting links below
     text = _RE_MD_LINK_EXT.sub(r"\1 <\2>", text)
     text = _RE_MD_LINK_INT.sub(r"\1", text)
     text = _RE_MD_INLINE_CODE.sub(r"\1", text)
@@ -101,6 +118,61 @@ def _resolve_prop_iri(model: Model, ns_name: str, name: str) -> str | None:
         logger.warning("Constraint references unknown property %r", name)
         return None
     return prop.iri
+
+
+def _range_class_fq(model: Model, prop_fq: str) -> str | None:
+    """The fully-qualified class a property's range points at, or ``None`` for a datatype range."""
+    prop = model.properties.get(prop_fq)
+    if prop is None:
+        return None
+    rng = prop.metadata.get("range", "")
+    if not rng or rng.startswith("xsd:"):
+        return None
+    fq = rng if rng.startswith("/") else f"/{prop.ns.name}/{rng}"
+    return fq if fq in model.classes else None
+
+
+def _walk_path(model: Model, ns_name: str, path: tuple[str, ...], start_cls: str | None = None) -> tuple[list[str] | None, str | None]:
+    """Resolve path hops to ``(hop_iris, last_prop_fq)`` via a contextual type-walk.
+
+    Each bare hop is resolved as a property of the class reached by the previous hop
+    (``Class.all_properties``, which spans namespaces), anchored at *start_cls*; a
+    ``/NS/name`` hop overrides. When a hop is not found contextually (no class context,
+    or absent there), it falls back to single-namespace resolution in *ns_name*.
+    Returns ``(None, None)`` if any hop is unresolvable.
+    """
+    iris: list[str] = []
+    last_fq: str | None = None
+    cls_fq = start_cls
+    for hop in path:
+        prop_fq: str | None = None
+        if hop.startswith("/"):
+            prop_fq = hop
+        elif cls_fq is not None:
+            cls = model.classes.get(cls_fq)
+            if cls is not None and hop in cls.all_properties:
+                prop_fq = cls.all_properties[hop]["fullname"]
+        if prop_fq is None:
+            prop_fq = f"/{ns_name}/{hop}"
+        prop = model.properties.get(prop_fq)
+        if prop is None:
+            logger.warning("Constraint references unknown property %r", hop)
+            return None, None
+        iris.append(prop.iri)
+        last_fq = prop_fq
+        cls_fq = _range_class_fq(model, prop_fq)
+    return iris, last_fq
+
+
+def _resolve_prop_ctx(model: Model, ns_name: str, name: str, start_cls: str | None = None) -> str | None:
+    """Resolve a single property reference with the contextual type-walk (see :func:`_walk_path`)."""
+    iris, _ = _walk_path(model, ns_name, (name,), start_cls)
+    return iris[0] if iris else None
+
+
+def _class_fq(ns_name: str, name: str) -> str:
+    """The fully-qualified ``/NS/Name`` form of a class reference (bare names use *ns_name*)."""
+    return name if name.startswith("/") else f"/{ns_name}/{name}"
 
 
 # ---------------------------------------------------------------------------
@@ -250,8 +322,13 @@ def gen_rdf_ontology(model: Model) -> Graph:
     g.add((ont_node, DCTERMS.title, Literal(ontology_cfg["title"], lang="en")))
     g.add((ont_node, OMG_ANN.copyright, Literal(ontology_cfg["copyright"], lang="en")))
 
-    _gen_classes(model, g)
-    _gen_class_constraints(model, g)
+    # Shared across the class-property and class-constraint passes so an identical
+    # constraint is never emitted twice on the same class node.
+    seen: set[tuple[str, object]] = set()
+    _gen_classes(model, g, seen)
+    _gen_class_constraints(model, g, seen)
+    _gen_relationship_constraints(model, g)
+    _gen_conformance(model, g)
     _gen_properties(model, g)
     _gen_vocabularies(model, g)
     _gen_individuals(model, g)
@@ -272,7 +349,7 @@ def _get_parent(model: Model, c: Class) -> Class | None:
     return None
 
 
-def _gen_classes(model: Model, g: Graph) -> None:
+def _gen_classes(model: Model, g: Graph, seen: set[tuple[str, object]]) -> None:
     for c in model.classes.values():
         node = URIRef(c.iri)
         ns_node = URIRef(c.ns.iri)
@@ -410,30 +487,88 @@ def _gen_classes(model: Model, g: Graph) -> None:
                 if maxcount != "*":
                     g.add((bnode, SH.maxCount, Literal(int(maxcount))))
 
+                # Property-level constraints apply to the property's value, so they
+                # propagate to every using class with the property name prepended.
+                _emit_property_constraints(model, g, node, prop, seen)
 
-def _emit_cond_card(model: Model, g: Graph, c_node: URIRef, ns_name: str, ast: CondCard) -> None:
-    """Emit ``sh:or`` encoding "if A >= m then B >= n"  ==  (A <= m-1) OR (B >= n)."""
-    if ast.ante_min < 1:
-        logger.warning("Constraint antecedent min must be >= 1 (got %d for %r)", ast.ante_min, ast.ante_prop)
+
+def _emit_property_constraints(model: Model, g: Graph, c_node: URIRef, prop: Property, seen: set[tuple[str, object]]) -> None:
+    """Emit a property's own ``## Constraints`` on *c_node*, scoped through the property.
+
+    Only path-bearing constraints (``type`` / ``not type`` / ``matches``) are valid
+    on a property. The property name is prepended as the first hop so the SHACL
+    targets the property's value (e.g. ``customIdToLicense -> elementValue``) —
+    unless the author already wrote the property as an explicit first hop. Each
+    ``(class node, scoped AST)`` is emitted at most once.
+    """
+    for expr in getattr(prop, "constraints", []):
+        ast = parse_constraint(expr)
+        scoped = scope_property_path(ast, prop.name)
+        if scoped is None:
+            if ast is not None:
+                logger.warning("Property %s: only path constraints are supported on a property, got %r", prop.iri, expr)
+            continue
+        key = (str(c_node), scoped)
+        if key in seen:
+            continue
+        seen.add(key)
+        _emit_constraint(_EmitCtx(model, g, prop.ns.name), c_node, scoped)
+
+
+class _EmitCtx(NamedTuple):
+    """Shared context threaded through every SHACL emitter."""
+
+    model: Model
+    g: Graph
+    ns_name: str
+
+
+class _GateCtx(NamedTuple):
+    """Conformance-rule gate parameters."""
+
+    coll_node: URIRef
+    coll_ref: str
+    gate_iris: list[str]
+    prof_iri: str
+
+
+def _emit_cardinality(ctx: _EmitCtx, c_node: URIRef | BNode, ast: Cardinality, start_cls: str | None = None) -> None:
+    """Emit a property shape with ``sh:minCount``/``sh:maxCount`` on *ast.path*."""
+    hop_iris, _ = _walk_path(ctx.model, ctx.ns_name, ast.path, start_cls)
+    if hop_iris is None:
         return
-    ante_iri = _resolve_prop_iri(model, ns_name, ast.ante_prop)
-    cons_iri = _resolve_prop_iri(model, ns_name, ast.cons_prop)
-    if not ante_iri or not cons_iri:
+    pshape = BNode()
+    ctx.g.add((c_node, SH.property, pshape))
+    _emit_path(ctx.g, pshape, hop_iris)
+    ctx.g.add((pshape, SH.minCount if ast.kind == "min" else SH.maxCount, Literal(ast.count)))
+
+
+def _emit_present(ctx: _EmitCtx, c_node: URIRef | BNode, ast: Present, start_cls: str | None = None) -> None:
+    """Emit a property shape requiring *ast.path* to include *ast.value* (``sh:hasValue``)."""
+    hop_iris, last_fq = _walk_path(ctx.model, ctx.ns_name, ast.path, start_cls)
+    if hop_iris is None:
         return
-    or_list = Collection(g, None)  # type: ignore[arg-type]
-    b1 = BNode()
-    ps1 = BNode()
-    g.add((b1, SH.property, ps1))
-    g.add((ps1, SH.path, URIRef(ante_iri)))
-    g.add((ps1, SH.maxCount, Literal(ast.ante_min - 1)))
-    b2 = BNode()
-    ps2 = BNode()
-    g.add((b2, SH.property, ps2))
-    g.add((ps2, SH.path, URIRef(cons_iri)))
-    g.add((ps2, SH.minCount, Literal(ast.cons_min)))
-    or_list.append(b1)
-    or_list.append(b2)
-    g.add((c_node, SH["or"], or_list.uri))
+    value_iri = _resolve_value_iri(ctx.model, last_fq, ast.value)
+    if value_iri is None:
+        return
+    pshape = BNode()
+    ctx.g.add((c_node, SH.property, pshape))
+    _emit_path(ctx.g, pshape, hop_iris)
+    ctx.g.add((pshape, SH["hasValue"], URIRef(value_iri)))
+
+
+def _emit_conditional(ctx: _EmitCtx, c_node: URIRef | BNode, ast: Conditional, start_cls: str | None = None) -> None:
+    """Emit ``if A then B`` as ``sh:or ( [ sh:not [A] ] [B] )``."""
+    ante_shape = BNode()
+    _emit_constraint(ctx, ante_shape, ast.antecedent, start_cls)
+    not_branch = BNode()
+    ctx.g.add((not_branch, SH["not"], ante_shape))
+    cons_branch = BNode()
+    _emit_constraint(ctx, cons_branch, ast.consequent, start_cls)
+    or_list = Collection(ctx.g, None)  # type: ignore[arg-type]
+    or_list.append(not_branch)
+    or_list.append(cons_branch)
+    ctx.g.add((c_node, SH["or"], or_list.uri))
 
 
 def _emit_class_choice(g: Graph, node: BNode, cls_iris: list[str]) -> None:
@@ -449,39 +584,176 @@ def _emit_class_choice(g: Graph, node: BNode, cls_iris: list[str]) -> None:
         g.add((node, SH["or"], or_list.uri))
 
 
-def _emit_path_type(model: Model, g: Graph, c_node: URIRef, ns_name: str, ast: PathType) -> None:
-    """Emit a property shape restricting the type of nodes reached by *ast.path*.
+def _emit_pos_neg(g: Graph, pshape: BNode, pos_iris: list[str], neg_iris: list[str]) -> None:
+    """Put positive classes on *pshape* (``sh:class``/``sh:or``); each negative as ``sh:not [ sh:class ]``."""
+    if pos_iris:
+        _emit_class_choice(g, pshape, pos_iris)
+    for ni in neg_iris:
+        not_node = BNode()
+        g.add((not_node, SH["class"], URIRef(ni)))
+        g.add((pshape, SH["not"], not_node))
 
-    Positive constraints put the class choice directly on the property shape;
-    negated ones wrap it in ``sh:not``.
-    """
-    hop_iris = [_resolve_prop_iri(model, ns_name, h) for h in ast.path]
-    cls_iris = [_resolve_class_iri(model, ns_name, cl) for cl in ast.classes]
-    if any(i is None for i in hop_iris) or any(i is None for i in cls_iris):
-        return
 
-    pshape = BNode()
-    g.add((c_node, SH.property, pshape))
-
-    # Single hop -> plain path; multi-hop -> SHACL sequence path (an RDF list).
+def _emit_path(g: Graph, pshape: BNode, hop_iris: list[str]) -> None:
+    """Set ``sh:path`` on *pshape*: a plain IRI for one hop, a sequence-path list for many."""
     if len(hop_iris) == 1:
-        g.add((pshape, SH.path, URIRef(hop_iris[0])))  # type: ignore[arg-type]
+        g.add((pshape, SH.path, URIRef(hop_iris[0])))
     else:
         path_list = Collection(g, None)  # type: ignore[arg-type]
         for hop in hop_iris:
-            path_list.append(URIRef(hop))  # type: ignore[arg-type]
+            path_list.append(URIRef(hop))
         g.add((pshape, SH.path, path_list.uri))
 
-    if ast.negated:
-        not_node = BNode()
-        _emit_class_choice(g, not_node, cls_iris)  # type: ignore[arg-type]
-        g.add((pshape, SH["not"], not_node))
-    else:
-        _emit_class_choice(g, pshape, cls_iris)  # type: ignore[arg-type]
+
+def _emit_path_type(ctx: _EmitCtx, c_node: URIRef | BNode, ast: PathType, start_cls: str | None = None) -> None:
+    """Emit a property shape restricting the type of nodes reached by *ast.path*.
+
+    Positive classes go on the property shape (``sh:class`` / ``sh:or``); each
+    negative class is wrapped in its own ``sh:not [ sh:class ]``.
+    """
+    hop_iris, _ = _walk_path(ctx.model, ctx.ns_name, ast.path, start_cls)
+    pos_iris = [_resolve_class_iri(ctx.model, ctx.ns_name, c) for c in ast.positives]
+    neg_iris = [_resolve_class_iri(ctx.model, ctx.ns_name, c) for c in ast.negatives]
+    if hop_iris is None or any(i is None for i in (*pos_iris, *neg_iris)):
+        return
+
+    pshape = BNode()
+    ctx.g.add((c_node, SH.property, pshape))
+    _emit_path(ctx.g, pshape, hop_iris)
+    _emit_pos_neg(ctx.g, pshape, pos_iris, neg_iris)  # type: ignore[arg-type]
 
 
-def _gen_class_constraints(model: Model, g: Graph) -> None:
-    """Emit SHACL for class-level constraints declared in ``## Constraints`` sections."""
+def _emit_pattern(ctx: _EmitCtx, c_node: URIRef | BNode, ast: Pattern, start_cls: str | None = None) -> None:
+    """Emit a property shape constraining the literal reached by *ast.path* to ``sh:pattern``."""
+    hop_iris, _ = _walk_path(ctx.model, ctx.ns_name, ast.path, start_cls)
+    if hop_iris is None:
+        return
+    pshape = BNode()
+    ctx.g.add((c_node, SH.property, pshape))
+    _emit_path(ctx.g, pshape, hop_iris)
+    ctx.g.add((pshape, SH["pattern"], Literal(ast.regex)))
+    if ast.flags:
+        ctx.g.add((pshape, SH["flags"], Literal(ast.flags)))
+
+
+def _numeric_literal(s: str) -> Literal:
+    """A SHACL-comparable numeric literal: ``xsd:decimal`` if it has a point, else ``xsd:integer``."""
+    return Literal(Decimal(s)) if "." in s else Literal(int(s))
+
+
+def _emit_range(ctx: _EmitCtx, c_node: URIRef | BNode, ast: Range, start_cls: str | None = None) -> None:
+    """Emit a property shape bounding the numeric literal reached by *ast.path* (inclusive)."""
+    hop_iris, _ = _walk_path(ctx.model, ctx.ns_name, ast.path, start_cls)
+    if hop_iris is None:
+        return
+    pshape = BNode()
+    ctx.g.add((c_node, SH.property, pshape))
+    _emit_path(ctx.g, pshape, hop_iris)
+    ctx.g.add((pshape, SH.minInclusive, _numeric_literal(ast.lo)))
+    ctx.g.add((pshape, SH.maxInclusive, _numeric_literal(ast.hi)))
+
+
+def _resolve_value_iri(model: Model, prop_fq: str | None, value: str) -> str | None:
+    """Resolve a fixed value to an IRI: a ``/NS/Vocab/entry`` form, or a bare entry of *prop_fq*'s range vocabulary."""
+    if value.startswith("/"):
+        return model.base_uri + value.lstrip("/")
+    prop = model.properties.get(prop_fq) if prop_fq else None
+    if prop is None:
+        logger.warning("Fixed-value constraint references unknown property %r", prop_fq)
+        return None
+    rng = prop.metadata.get("range", "")
+    vocab_fq = rng if rng.startswith("/") else f"/{prop.ns.name}/{rng}"
+    vocab = model.vocabularies.get(vocab_fq)
+    if vocab is None:
+        logger.warning("Fixed-value %r: property %s has no vocabulary range", value, prop_fq)
+        return None
+    return f"{vocab.iri}/{value}"
+
+
+def _emit_fixed(ctx: _EmitCtx, c_node: URIRef | BNode, ast: Fixed, start_cls: str | None = None) -> None:
+    """Emit a property shape pinning the node reached by *ast.path* to a fixed value (``sh:hasValue``)."""
+    hop_iris, last_fq = _walk_path(ctx.model, ctx.ns_name, ast.path, start_cls)
+    if hop_iris is None:
+        return
+    value_iri = _resolve_value_iri(ctx.model, last_fq, ast.value)
+    if value_iri is None:
+        return
+    pshape = BNode()
+    ctx.g.add((c_node, SH.property, pshape))
+    _emit_path(ctx.g, pshape, hop_iris)
+    ctx.g.add((pshape, SH["hasValue"], URIRef(value_iri)))
+
+
+def _emit_selector_pattern(ctx: _EmitCtx, c_node: URIRef | BNode, ast: SelectorPattern, start_cls: str | None = None) -> None:
+    """Emit, per entry of the selector's range vocabulary that has a ``pattern``, a guarded
+    ``sh:or ( [ sh:not [ selector hasValue entry ] ] [ path sh:pattern entry-pattern ] )``."""
+    hop_iris, _ = _walk_path(ctx.model, ctx.ns_name, ast.path, start_cls)
+    sel_iri = _resolve_prop_ctx(ctx.model, ctx.ns_name, ast.selector, start_cls)
+    if hop_iris is None or sel_iri is None:
+        return
+    # The selector is a property of the subject class; resolve its FQ the same way.
+    sel_walk, sel_fq = _walk_path(ctx.model, ctx.ns_name, (ast.selector,), start_cls)
+    if sel_walk is None:
+        return
+    sel_prop = ctx.model.properties.get(sel_fq)  # type: ignore[arg-type]
+    rng = sel_prop.metadata.get("range", "") if sel_prop else ""
+    vocab_fq = rng if rng.startswith("/") else f"/{sel_prop.ns.name}/{rng}" if sel_prop else ""
+    vocab = ctx.model.vocabularies.get(vocab_fq)
+    if vocab is None:
+        logger.warning("matches-selector %r: %s has no vocabulary range", ast.selector, sel_fq)
+        return
+    for entry_name, entry in vocab.entries.items():
+        pattern = entry.get("pattern")
+        if not pattern:
+            continue
+        antecedent = BNode()
+        ant_ps = BNode()
+        ctx.g.add((antecedent, SH.property, ant_ps))
+        ctx.g.add((ant_ps, SH.path, URIRef(sel_iri)))
+        ctx.g.add((ant_ps, SH["hasValue"], URIRef(f"{vocab.iri}/{entry_name}")))
+        not_branch = BNode()
+        ctx.g.add((not_branch, SH["not"], antecedent))
+        consequent = BNode()
+        cons_ps = BNode()
+        ctx.g.add((consequent, SH.property, cons_ps))
+        _emit_path(ctx.g, cons_ps, hop_iris)
+        ctx.g.add((cons_ps, SH["pattern"], Literal(str(pattern))))
+        or_list = Collection(ctx.g, None)  # type: ignore[arg-type]
+        or_list.append(not_branch)
+        or_list.append(consequent)
+        ctx.g.add((c_node, SH["or"], or_list.uri))
+
+
+def _emit_constraint(ctx: _EmitCtx, c_node: URIRef | BNode, ast: object, start_cls: str | None = None) -> None:
+    """Dispatch a parsed constraint to its SHACL emitter.
+
+    *start_cls* is the fully-qualified class that the path is rooted at (the
+    constraint's subject), enabling the contextual type-walk in :func:`_walk_path`.
+    """
+    if isinstance(ast, Conditional):
+        _emit_conditional(ctx, c_node, ast, start_cls)
+    elif isinstance(ast, SelectorPattern):
+        _emit_selector_pattern(ctx, c_node, ast, start_cls)
+    elif isinstance(ast, Cardinality):
+        _emit_cardinality(ctx, c_node, ast, start_cls)
+    elif isinstance(ast, Present):
+        _emit_present(ctx, c_node, ast, start_cls)
+    elif isinstance(ast, PathType):
+        _emit_path_type(ctx, c_node, ast, start_cls)
+    elif isinstance(ast, Pattern):
+        _emit_pattern(ctx, c_node, ast, start_cls)
+    elif isinstance(ast, Range):
+        _emit_range(ctx, c_node, ast, start_cls)
+    elif isinstance(ast, Fixed):
+        _emit_fixed(ctx, c_node, ast, start_cls)
+
+
+def _gen_class_constraints(model: Model, g: Graph, seen: set[tuple[str, object]]) -> None:
+    """Emit SHACL for class-level constraints declared in ``## Constraints`` sections.
+
+    *seen* (shared with the property-constraint pass) skips a constraint already
+    emitted on the same class node — e.g. a class restating a property's own rule.
+    """
     for c in model.classes.values():
         constraints = getattr(c, "constraints", None)
         if not constraints:
@@ -489,10 +761,249 @@ def _gen_class_constraints(model: Model, g: Graph) -> None:
         c_node = URIRef(c.iri)
         for expr in constraints:
             ast = parse_constraint(expr)
-            if isinstance(ast, CondCard):
-                _emit_cond_card(model, g, c_node, c.ns.name, ast)
-            elif isinstance(ast, PathType):
-                _emit_path_type(model, g, c_node, c.ns.name, ast)
+            if ast is None:
+                continue
+            key = (str(c_node), ast)
+            if key in seen:
+                continue
+            seen.add(key)
+            _emit_constraint(_EmitCtx(model, g, c.ns.name), c_node, ast, start_cls=c.fqname)
+
+
+def _endpoint_class_iris(model: Model, ns_name: str, class_names: list[str]) -> tuple[list[str], list[str]]:
+    """Resolve relationship endpoint classes to ``(positives, negatives)`` IRIs.
+
+    Each item may carry a per-item ``not``. A bracket qualifier
+    (``Relationship[relationshipType=…]``) is reduced to its base class. The
+    universal ``Element`` root is dropped (it is already the range of
+    ``from``/``to``).
+    """
+    pos: list[str] = []
+    neg: list[str] = []
+    for cn in class_names:
+        raw = str(cn).strip()
+        negated = raw.startswith("not ")
+        if negated:
+            raw = raw[4:].strip()
+        base = raw.split("[", 1)[0].strip()
+        if not base or base == "Element":
+            continue
+        iri = _resolve_class_iri(model, ns_name, base)
+        if iri:
+            (neg if negated else pos).append(iri)
+    return pos, neg
+
+
+def _emit_endpoint(model: Model, g: Graph, parent: BNode, ns_name: str, side: tuple[str, list[str]]) -> bool:
+    """Resolve and emit one endpoint shape; return ``True`` when a shape was emitted."""
+    prop_name, class_names = side
+    pos, neg = _endpoint_class_iris(model, ns_name, class_names)
+    if not pos and not neg:
+        return False
+    prop_iri = _resolve_prop_iri(model, ns_name, prop_name)
+    if not prop_iri:
+        return False
+    pshape = BNode()
+    g.add((parent, SH.property, pshape))
+    g.add((pshape, SH.path, URIRef(prop_iri)))
+    _emit_pos_neg(g, pshape, pos, neg)
+    return True
+
+
+def _gen_relationship_constraints(model: Model, g: Graph) -> None:
+    """Emit SHACL scoping the ``from``/``to`` endpoint classes per relationship type.
+
+    For each entry of a relationship-type vocabulary, the relationship class is
+    constrained so that *if* its ``relationshipType`` is that entry, *then* its
+    ``from``/``to`` values must be instances of the entry's declared classes.
+    This is encoded as ``sh:or ( [not this type] [endpoints conform] )``.
+    """
+    for vocab in model.vocabularies.values():
+        if not getattr(vocab, "is_relationship_vocab", False):
+            continue
+        ns_name = vocab.ns.name
+        rtype_prop = _resolve_prop_iri(model, ns_name, "relationshipType")
+        if not rtype_prop:
+            continue
+        for entry_name, entry in vocab.entries.items():
+            rel_base = str(entry.get("relationshipClass", "")).split("[", 1)[0].strip()
+            rel_class_iri = _resolve_class_iri(model, ns_name, rel_base) if rel_base else None
+            if not rel_class_iri:
+                continue
+
+            from_classes = entry.get("from") if isinstance(entry.get("from"), list) else []
+            to_classes = entry.get("to") if isinstance(entry.get("to"), list) else []
+            consequent = BNode()
+            emitted = _emit_endpoint(model, g, consequent, ns_name, ("from", from_classes))  # type: ignore[arg-type]
+            emitted = _emit_endpoint(model, g, consequent, ns_name, ("to", to_classes)) or emitted  # type: ignore[arg-type]
+            if not emitted:
+                continue
+
+            # Antecedent shape: the relationship has this entry as its relationshipType value.
+            antecedent = BNode()
+            ant_ps = BNode()
+            g.add((antecedent, SH.property, ant_ps))
+            g.add((ant_ps, SH.path, URIRef(rtype_prop)))
+            g.add((ant_ps, SH["hasValue"], URIRef(vocab.iri + "/" + entry_name)))
+
+            not_node = BNode()
+            g.add((not_node, SH["not"], antecedent))
+
+            or_list = Collection(g, None)  # type: ignore[arg-type]
+            or_list.append(not_node)
+            or_list.append(consequent)
+            g.add((URIRef(rel_class_iri), SH["or"], or_list.uri))
+
+
+def _emit_gate_not(g: Graph, prof_iri: str, gate_iris: list[str], *, require_present: bool = False) -> BNode:
+    """Return a node shape that conforms iff the gate property has *none* of *gate_iris*.
+
+    When *require_present* is true (the rule's profile is the **default**, so an
+    omitted ``profileConformance`` is treated as that profile), the shape also
+    requires the property to be present — so an omitted value is *not* treated as
+    inactive, and the rule still applies.
+    """
+    if len(gate_iris) == 1:
+        inner = BNode()
+        ips = BNode()
+        g.add((inner, SH.property, ips))
+        g.add((ips, SH.path, URIRef(prof_iri)))
+        g.add((ips, SH["hasValue"], URIRef(gate_iris[0])))
+    else:
+        or_list = Collection(g, None)  # type: ignore[arg-type]
+        for gi in gate_iris:
+            b = BNode()
+            bps = BNode()
+            g.add((b, SH.property, bps))
+            g.add((bps, SH.path, URIRef(prof_iri)))
+            g.add((bps, SH["hasValue"], URIRef(gi)))
+            or_list.append(b)
+        inner = BNode()
+        g.add((inner, SH["or"], or_list.uri))
+    gate_not = BNode()
+    g.add((gate_not, SH["not"], inner))
+    if require_present:
+        present = BNode()
+        g.add((gate_not, SH.property, present))
+        g.add((present, SH.path, URIRef(prof_iri)))
+        g.add((present, SH["minCount"], Literal(1)))
+    return gate_not
+
+
+def _emit_where_shape(ctx: _EmitCtx, where: tuple[str, ...], start_cls: str | None = None) -> BNode:
+    """Build a node shape (BNode) carrying every ``where`` line as a constraint rooted at *start_cls*."""
+    shape = BNode()
+    for w in where:
+        _emit_constraint(ctx, shape, parse_constraint(w), start_cls)
+    return shape
+
+
+def _emit_existential(ctx: _EmitCtx, rule: Conformance) -> BNode | None:
+    """Build a node shape requiring *count* linked *exists* instances satisfying *where*."""
+    exists_fq = _class_fq(ctx.ns_name, rule.exists)
+    exists = _resolve_class_iri(ctx.model, ctx.ns_name, rule.exists)
+    # `where` and `linkedBy` are rooted at the existential class.
+    linked = _resolve_prop_ctx(ctx.model, ctx.ns_name, rule.linked_by, start_cls=exists_fq)
+    if exists is None or linked is None:
+        return None
+    qvs = _emit_where_shape(ctx, rule.where, start_cls=exists_fq)
+    ctx.g.add((qvs, SH["class"], URIRef(exists)))
+    inv = BNode()
+    ctx.g.add((inv, SH["inversePath"], URIRef(linked)))
+    exist_ps = BNode()
+    ctx.g.add((exist_ps, SH.path, inv))
+    ctx.g.add((exist_ps, SH["qualifiedValueShape"], qvs))
+    qmin, qmax = count_bounds(rule.count)
+    if qmin is not None:
+        ctx.g.add((exist_ps, SH["qualifiedMinCount"], Literal(qmin)))
+    if qmax is not None:
+        ctx.g.add((exist_ps, SH["qualifiedMaxCount"], Literal(qmax)))
+    shape = BNode()
+    ctx.g.add((shape, SH.property, exist_ps))
+    return shape
+
+
+def _emit_conformance_rule(ctx: _EmitCtx, gate_ctx: _GateCtx, rule: Conformance, *, is_default: bool = False) -> None:
+    """Emit one conformance rule (collection-self, existential, or member-predicate)."""
+    gate = _emit_gate_not(ctx.g, gate_ctx.prof_iri, gate_ctx.gate_iris, require_present=is_default)
+
+    # collection-self mode: the collection, when an <applies_to>, must satisfy where.
+    if rule.applies_to:
+        target = _resolve_class_iri(ctx.model, ctx.ns_name, rule.applies_to)
+        if target is None:
+            return
+        active = _emit_where_shape(ctx, rule.where, start_cls=_class_fq(ctx.ns_name, rule.applies_to))
+        target_node: URIRef = URIRef(target)
+    else:
+        for_each = _resolve_class_iri(ctx.model, ctx.ns_name, rule.for_each)
+        # `in:` is a property of the collection class; `where` is rooted at the member class.
+        membership = _resolve_prop_ctx(ctx.model, ctx.ns_name, rule.membership, start_cls=gate_ctx.coll_ref)
+        if for_each is None or membership is None:
+            return
+        inner = (
+            _emit_existential(ctx, rule) if rule.exists else _emit_where_shape(ctx, rule.where, start_cls=_class_fq(ctx.ns_name, rule.for_each))
+        )
+        if inner is None:
+            return
+        # Per member: not a <for_each>  OR  the inner shape holds.
+        nf_cls = BNode()
+        ctx.g.add((nf_cls, SH["class"], URIRef(for_each)))
+        not_for_each = BNode()
+        ctx.g.add((not_for_each, SH["not"], nf_cls))
+        member_or = Collection(ctx.g, None)  # type: ignore[arg-type]
+        member_or.append(not_for_each)
+        member_or.append(inner)
+        member_ps = BNode()
+        ctx.g.add((member_ps, SH.path, URIRef(membership)))
+        ctx.g.add((member_ps, SH["or"], member_or.uri))
+        active = BNode()
+        ctx.g.add((active, SH.property, member_ps))
+        target_node = gate_ctx.coll_node
+
+    top = Collection(ctx.g, None)  # type: ignore[arg-type]
+    top.append(gate)
+    top.append(active)
+    ctx.g.add((target_node, SH["or"], top.uri))
+
+
+def _gen_conformance(model: Model, g: Graph) -> None:
+    """Emit SHACL for structured ``## Profile conformance`` blocks (tier 4)."""
+    namespaces_with_rules = [ns for ns in model.namespaces if getattr(ns, "conformance_rules", None)]
+    if not namespaces_with_rules:
+        return
+    cfg = model.config.get("conformance", {})
+    coll_ref = cfg.get("collection-class", "/Core/ElementCollection")
+    prof_ref = cfg.get("profile-property", "/Core/profileConformance")
+    profile_map = cfg.get("profile", {}) or {}
+
+    coll_iri = _resolve_class_iri(model, "", coll_ref)
+    prof_iri = _resolve_prop_iri(model, "", prof_ref)
+    prof_prop = model.properties.get(prof_ref)
+    if coll_iri is None or prof_iri is None or prof_prop is None:
+        logger.warning("conformance: cannot resolve collection-class %r or profile-property %r", coll_ref, prof_ref)
+        return
+    rng = prof_prop.metadata.get("range", "")
+    gate_vocab = model.vocabularies.get(rng if rng.startswith("/") else f"/{prof_prop.ns.name}/{rng}")
+    if gate_vocab is None:
+        logger.warning("conformance: profile-property %s has no vocabulary range", prof_ref)
+        return
+
+    default_profile = cfg.get("default-profile")
+    default_iri = f"{gate_vocab.iri}/{default_profile}" if default_profile else None
+
+    coll_node = URIRef(coll_iri)
+    for ns in namespaces_with_rules:
+        entries = profile_map.get(ns.name)
+        if entries is None:
+            logger.warning("conformance: namespace %s has rules but no conformance.profile mapping", ns.name)
+            continue
+        gate_iris = [f"{gate_vocab.iri}/{e}" for e in ([entries] if isinstance(entries, str) else entries)]
+        # When the rule gates on the default profile, an omitted profileConformance still applies.
+        is_default = default_iri is not None and default_iri in gate_iris
+        ctx = _EmitCtx(model, g, ns.name)
+        gate_ctx = _GateCtx(coll_node, coll_ref, gate_iris, prof_iri)
+        for rule in ns.conformance_rules:
+            _emit_conformance_rule(ctx, gate_ctx, rule, is_default=is_default)
 
 
 def _gen_properties(model: Model, g: Graph) -> None:

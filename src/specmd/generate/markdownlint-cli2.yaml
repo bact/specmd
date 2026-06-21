@@ -7,11 +7,11 @@ ignores:
   - "files/**"
 
 config:
-  # MD013 -- line length: tables and code blocks are exempt (URLs and data can be long)
-  MD013:
-    line_length: 120
-    tables: false
-    code_blocks: false
+  # MD013 -- line length: disabled. Generated pages carry semantic prose
+  # (class/property descriptions, rendered constraint and profile-conformance
+  # sentences) that is not hard-wrapped and renders as wrapped HTML in the docs
+  # site, so a source line-length limit does not apply.
+  MD013: false
 
   # MD024 -- duplicate heading names: allow repetition under different parent headings
   # (e.g. "Summary" and "Description" appear under each class section in single-file output)

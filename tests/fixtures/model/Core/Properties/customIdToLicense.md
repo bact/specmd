@@ -17,3 +17,8 @@ Associates a reference string with the element that defines the license.
 - name: customIdToLicense
 - nature: ObjectProperty
 - range: ElementMap
+
+## Constraints
+
+- /Core/elementValue type /Core/Tool, ElementMap
+- key matches `^(LicenseRef-|AdditionRef-)` flags i
