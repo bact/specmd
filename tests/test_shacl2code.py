@@ -44,11 +44,8 @@ pytest.importorskip("shacl2code", reason="shacl2code not installed")
 
 def _rdf_via_spec_parser(model_path: Path) -> Graph:
     """Load old-format model with upstream spec_parser and return the rdflib Graph."""
-    # type: ignore[import-not-found]  # pylint: disable=import-error
-    from spec_parser.model import Model as SpModel
-
-    # type: ignore[import-not-found]  # pylint: disable=import-error
-    from spec_parser.rdf import gen_rdf_ontology as sp_gen
+    from spec_parser.model import Model as SpModel  # type: ignore[import-not-found]  # pylint: disable=import-error
+    from spec_parser.rdf import gen_rdf_ontology as sp_gen  # type: ignore[import-not-found]  # pylint: disable=import-error
 
     m = SpModel(model_path)
     return sp_gen(m)

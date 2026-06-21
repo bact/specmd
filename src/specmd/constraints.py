@@ -211,31 +211,25 @@ def parse_constraint(expr: str) -> Constraint | None:
     return None
 
 
-def _parse_predicate(expr: str) -> Predicate | None:  # noqa: PLR0911
+def _parse_predicate(expr: str) -> Predicate | None:
     """Parse a single (non-conditional) predicate, or ``None``."""
-    m = _RE_CARD.match(expr)
-    if m:
-        return Cardinality(path=_split_path(m.group("path")), kind=m.group("kind"), count=int(m.group("count")))
-    m = _RE_PRESENT.match(expr)
-    if m:
-        return Present(path=_split_path(m.group("path")), value=m.group("value"))
-    m = _RE_PATH_TYPE.match(expr)
-    if m:
+    result: Predicate | None = None
+    if m := _RE_CARD.match(expr):
+        result = Cardinality(path=_split_path(m.group("path")), kind=m.group("kind"), count=int(m.group("count")))
+    elif m := _RE_PRESENT.match(expr):
+        result = Present(path=_split_path(m.group("path")), value=m.group("value"))
+    elif m := _RE_PATH_TYPE.match(expr):
         positives, negatives = _split_class_terms(m.group("classes"), alias_negate=bool(m.group("neg")))
-        overlap = set(positives) & set(negatives)
-        if overlap:
+        if overlap := set(positives) & set(negatives):
             logger.warning("Constraint class %s is both required and forbidden in %r", sorted(overlap), expr)
-        return PathType(path=_split_path(m.group("path")), positives=positives, negatives=negatives)
-    m = _RE_PATTERN.match(expr)
-    if m:
-        return Pattern(path=_split_path(m.group("path")), regex=m.group("regex"), flags=m.group("flags") or "")
-    m = _RE_RANGE.match(expr)
-    if m:
-        return Range(path=_split_path(m.group("path")), lo=m.group("lo"), hi=m.group("hi"))
-    m = _RE_FIXED.match(expr)
-    if m:
-        return Fixed(path=_split_path(m.group("path")), value=m.group("value"))
-    return None
+        result = PathType(path=_split_path(m.group("path")), positives=positives, negatives=negatives)
+    elif m := _RE_PATTERN.match(expr):
+        result = Pattern(path=_split_path(m.group("path")), regex=m.group("regex"), flags=m.group("flags") or "")
+    elif m := _RE_RANGE.match(expr):
+        result = Range(path=_split_path(m.group("path")), lo=m.group("lo"), hi=m.group("hi"))
+    elif m := _RE_FIXED.match(expr):
+        result = Fixed(path=_split_path(m.group("path")), value=m.group("value"))
+    return result
 
 
 def _split_path(raw: str) -> tuple[str, ...]:
@@ -324,46 +318,48 @@ def _condition_clause(ast: Predicate, subject: str) -> str:
     return sentence[:1].lower() + sentence[1:].rstrip(".") if sentence else ""
 
 
-def _requirement_clause(ast: Predicate) -> str:  # noqa: PLR0911
+def _requirement_clause(ast: Predicate) -> str:
     """Consequent phrasing, referring to the subject as 'it'/'its'."""
+    result = ""
     if isinstance(ast, Cardinality):
-        return f"it shall have {_rel_word(ast.kind)} {ast.count} {_path_text(ast.path)}"
-    if isinstance(ast, Present):
-        return f"its {_path_text(ast.path)} shall include {_short(ast.value)}"
-    if isinstance(ast, Range):
-        return f"its {_path_text(ast.path)} shall be between {ast.lo} and {ast.hi}"
-    if isinstance(ast, Fixed):
-        return f"its {_path_text(ast.path)} shall be {_short(ast.value)}"
-    if isinstance(ast, PathType):
-        return f"its {_path_text(ast.path)} {_type_body(ast)}"
-    if isinstance(ast, Pattern):
-        return f"its {_path_text(ast.path)} shall match `{ast.regex}`{_flag_suffix(ast.flags)}"
-    return ""
+        result = f"it shall have {_rel_word(ast.kind)} {ast.count} {_path_text(ast.path)}"
+    elif isinstance(ast, Present):
+        result = f"its {_path_text(ast.path)} shall include {_short(ast.value)}"
+    elif isinstance(ast, Range):
+        result = f"its {_path_text(ast.path)} shall be between {ast.lo} and {ast.hi}"
+    elif isinstance(ast, Fixed):
+        result = f"its {_path_text(ast.path)} shall be {_short(ast.value)}"
+    elif isinstance(ast, PathType):
+        result = f"its {_path_text(ast.path)} {_type_body(ast)}"
+    elif isinstance(ast, Pattern):
+        result = f"its {_path_text(ast.path)} shall match `{ast.regex}`{_flag_suffix(ast.flags)}"
+    return result
 
 
-def constraint_to_prose(ast: Constraint | None, subject: str) -> str:  # noqa: PLR0911
+def constraint_to_prose(ast: Constraint | None, subject: str) -> str:
     """Render an AST node as a human-readable English sentence for documentation.
 
     *subject* names whatever the constraint hangs off: the class for a class
     constraint, or the owning property for a property-scoped path.
     """
+    result = ""
     if isinstance(ast, Conditional):
-        return f"If {_condition_clause(ast.antecedent, subject)}, then {_requirement_clause(ast.consequent)}."
-    if isinstance(ast, Cardinality):
-        return f"The {subject} shall have {_rel_word(ast.kind)} {ast.count} {_path_text(ast.path)}."
-    if isinstance(ast, Present):
-        return f"The {subject}'s {_path_text(ast.path)} shall include {_short(ast.value)}."
-    if isinstance(ast, PathType):
-        return f"Each {_path_text(ast.path)} {_type_body(ast)}."
-    if isinstance(ast, Pattern):
-        return f"Each {_path_text(ast.path)} shall match `{ast.regex}`{_flag_suffix(ast.flags)}."
-    if isinstance(ast, Range):
-        return f"Each {_path_text(ast.path)} shall be between {ast.lo} and {ast.hi}."
-    if isinstance(ast, Fixed):
-        return f"The {_path_text(ast.path)} shall be {_short(ast.value)}."
-    if isinstance(ast, SelectorPattern):
-        return f"Each {_path_text(ast.path)} shall match the pattern of its {_short(ast.selector)}."
-    return ""
+        result = f"If {_condition_clause(ast.antecedent, subject)}, then {_requirement_clause(ast.consequent)}."
+    elif isinstance(ast, Cardinality):
+        result = f"The {subject} shall have {_rel_word(ast.kind)} {ast.count} {_path_text(ast.path)}."
+    elif isinstance(ast, Present):
+        result = f"The {subject}'s {_path_text(ast.path)} shall include {_short(ast.value)}."
+    elif isinstance(ast, PathType):
+        result = f"Each {_path_text(ast.path)} {_type_body(ast)}."
+    elif isinstance(ast, Pattern):
+        result = f"Each {_path_text(ast.path)} shall match `{ast.regex}`{_flag_suffix(ast.flags)}."
+    elif isinstance(ast, Range):
+        result = f"Each {_path_text(ast.path)} shall be between {ast.lo} and {ast.hi}."
+    elif isinstance(ast, Fixed):
+        result = f"The {_path_text(ast.path)} shall be {_short(ast.value)}."
+    elif isinstance(ast, SelectorPattern):
+        result = f"Each {_path_text(ast.path)} shall match the pattern of its {_short(ast.selector)}."
+    return result
 
 
 def prepend_path(ast: Constraint | None, hop: str) -> Constraint | None:

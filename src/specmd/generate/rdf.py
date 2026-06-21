@@ -10,7 +10,7 @@ import re
 import warnings
 from decimal import Decimal
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 import rfc8785
 from rdflib import BNode, Graph, Literal, Namespace, URIRef
@@ -512,52 +512,63 @@ def _emit_property_constraints(model: Model, g: Graph, c_node: URIRef, prop: Pro
         if key in seen:
             continue
         seen.add(key)
-        _emit_constraint(model, g, c_node, prop.ns.name, scoped)
+        _emit_constraint(_EmitCtx(model, g, prop.ns.name), c_node, scoped)
 
 
-def _emit_cardinality(  # noqa: PLR0913
-    model: Model, g: Graph, c_node: URIRef | BNode, ns_name: str, ast: Cardinality, start_cls: str | None = None
-) -> None:
+class _EmitCtx(NamedTuple):
+    """Shared context threaded through every SHACL emitter."""
+
+    model: Model
+    g: Graph
+    ns_name: str
+
+
+class _GateCtx(NamedTuple):
+    """Conformance-rule gate parameters."""
+
+    coll_node: URIRef
+    coll_ref: str
+    gate_iris: list[str]
+    prof_iri: str
+
+
+def _emit_cardinality(ctx: _EmitCtx, c_node: URIRef | BNode, ast: Cardinality, start_cls: str | None = None) -> None:
     """Emit a property shape with ``sh:minCount``/``sh:maxCount`` on *ast.path*."""
-    hop_iris, _ = _walk_path(model, ns_name, ast.path, start_cls)
+    hop_iris, _ = _walk_path(ctx.model, ctx.ns_name, ast.path, start_cls)
     if hop_iris is None:
         return
     pshape = BNode()
-    g.add((c_node, SH.property, pshape))
-    _emit_path(g, pshape, hop_iris)
-    g.add((pshape, SH.minCount if ast.kind == "min" else SH.maxCount, Literal(ast.count)))
+    ctx.g.add((c_node, SH.property, pshape))
+    _emit_path(ctx.g, pshape, hop_iris)
+    ctx.g.add((pshape, SH.minCount if ast.kind == "min" else SH.maxCount, Literal(ast.count)))
 
 
-def _emit_present(  # noqa: PLR0913
-    model: Model, g: Graph, c_node: URIRef | BNode, ns_name: str, ast: Present, start_cls: str | None = None
-) -> None:
+def _emit_present(ctx: _EmitCtx, c_node: URIRef | BNode, ast: Present, start_cls: str | None = None) -> None:
     """Emit a property shape requiring *ast.path* to include *ast.value* (``sh:hasValue``)."""
-    hop_iris, last_fq = _walk_path(model, ns_name, ast.path, start_cls)
+    hop_iris, last_fq = _walk_path(ctx.model, ctx.ns_name, ast.path, start_cls)
     if hop_iris is None:
         return
-    value_iri = _resolve_value_iri(model, last_fq, ast.value)
+    value_iri = _resolve_value_iri(ctx.model, last_fq, ast.value)
     if value_iri is None:
         return
     pshape = BNode()
-    g.add((c_node, SH.property, pshape))
-    _emit_path(g, pshape, hop_iris)
-    g.add((pshape, SH["hasValue"], URIRef(value_iri)))
+    ctx.g.add((c_node, SH.property, pshape))
+    _emit_path(ctx.g, pshape, hop_iris)
+    ctx.g.add((pshape, SH["hasValue"], URIRef(value_iri)))
 
 
-def _emit_conditional(  # noqa: PLR0913
-    model: Model, g: Graph, c_node: URIRef | BNode, ns_name: str, ast: Conditional, start_cls: str | None = None
-) -> None:
+def _emit_conditional(ctx: _EmitCtx, c_node: URIRef | BNode, ast: Conditional, start_cls: str | None = None) -> None:
     """Emit ``if A then B`` as ``sh:or ( [ sh:not [A] ] [B] )``."""
     ante_shape = BNode()
-    _emit_constraint(model, g, ante_shape, ns_name, ast.antecedent, start_cls)
+    _emit_constraint(ctx, ante_shape, ast.antecedent, start_cls)
     not_branch = BNode()
-    g.add((not_branch, SH["not"], ante_shape))
+    ctx.g.add((not_branch, SH["not"], ante_shape))
     cons_branch = BNode()
-    _emit_constraint(model, g, cons_branch, ns_name, ast.consequent, start_cls)
-    or_list = Collection(g, None)  # type: ignore[arg-type]
+    _emit_constraint(ctx, cons_branch, ast.consequent, start_cls)
+    or_list = Collection(ctx.g, None)  # type: ignore[arg-type]
     or_list.append(not_branch)
     or_list.append(cons_branch)
-    g.add((c_node, SH["or"], or_list.uri))
+    ctx.g.add((c_node, SH["or"], or_list.uri))
 
 
 def _emit_class_choice(g: Graph, node: BNode, cls_iris: list[str]) -> None:
@@ -594,39 +605,35 @@ def _emit_path(g: Graph, pshape: BNode, hop_iris: list[str]) -> None:
         g.add((pshape, SH.path, path_list.uri))
 
 
-def _emit_path_type(  # noqa: PLR0913
-    model: Model, g: Graph, c_node: URIRef | BNode, ns_name: str, ast: PathType, start_cls: str | None = None
-) -> None:
+def _emit_path_type(ctx: _EmitCtx, c_node: URIRef | BNode, ast: PathType, start_cls: str | None = None) -> None:
     """Emit a property shape restricting the type of nodes reached by *ast.path*.
 
     Positive classes go on the property shape (``sh:class`` / ``sh:or``); each
     negative class is wrapped in its own ``sh:not [ sh:class ]``.
     """
-    hop_iris, _ = _walk_path(model, ns_name, ast.path, start_cls)
-    pos_iris = [_resolve_class_iri(model, ns_name, c) for c in ast.positives]
-    neg_iris = [_resolve_class_iri(model, ns_name, c) for c in ast.negatives]
+    hop_iris, _ = _walk_path(ctx.model, ctx.ns_name, ast.path, start_cls)
+    pos_iris = [_resolve_class_iri(ctx.model, ctx.ns_name, c) for c in ast.positives]
+    neg_iris = [_resolve_class_iri(ctx.model, ctx.ns_name, c) for c in ast.negatives]
     if hop_iris is None or any(i is None for i in (*pos_iris, *neg_iris)):
         return
 
     pshape = BNode()
-    g.add((c_node, SH.property, pshape))
-    _emit_path(g, pshape, hop_iris)
-    _emit_pos_neg(g, pshape, pos_iris, neg_iris)  # type: ignore[arg-type]
+    ctx.g.add((c_node, SH.property, pshape))
+    _emit_path(ctx.g, pshape, hop_iris)
+    _emit_pos_neg(ctx.g, pshape, pos_iris, neg_iris)  # type: ignore[arg-type]
 
 
-def _emit_pattern(  # noqa: PLR0913
-    model: Model, g: Graph, c_node: URIRef | BNode, ns_name: str, ast: Pattern, start_cls: str | None = None
-) -> None:
+def _emit_pattern(ctx: _EmitCtx, c_node: URIRef | BNode, ast: Pattern, start_cls: str | None = None) -> None:
     """Emit a property shape constraining the literal reached by *ast.path* to ``sh:pattern``."""
-    hop_iris, _ = _walk_path(model, ns_name, ast.path, start_cls)
+    hop_iris, _ = _walk_path(ctx.model, ctx.ns_name, ast.path, start_cls)
     if hop_iris is None:
         return
     pshape = BNode()
-    g.add((c_node, SH.property, pshape))
-    _emit_path(g, pshape, hop_iris)
-    g.add((pshape, SH["pattern"], Literal(ast.regex)))
+    ctx.g.add((c_node, SH.property, pshape))
+    _emit_path(ctx.g, pshape, hop_iris)
+    ctx.g.add((pshape, SH["pattern"], Literal(ast.regex)))
     if ast.flags:
-        g.add((pshape, SH["flags"], Literal(ast.flags)))
+        ctx.g.add((pshape, SH["flags"], Literal(ast.flags)))
 
 
 def _numeric_literal(s: str) -> Literal:
@@ -634,18 +641,16 @@ def _numeric_literal(s: str) -> Literal:
     return Literal(Decimal(s)) if "." in s else Literal(int(s))
 
 
-def _emit_range(  # noqa: PLR0913
-    model: Model, g: Graph, c_node: URIRef | BNode, ns_name: str, ast: Range, start_cls: str | None = None
-) -> None:
+def _emit_range(ctx: _EmitCtx, c_node: URIRef | BNode, ast: Range, start_cls: str | None = None) -> None:
     """Emit a property shape bounding the numeric literal reached by *ast.path* (inclusive)."""
-    hop_iris, _ = _walk_path(model, ns_name, ast.path, start_cls)
+    hop_iris, _ = _walk_path(ctx.model, ctx.ns_name, ast.path, start_cls)
     if hop_iris is None:
         return
     pshape = BNode()
-    g.add((c_node, SH.property, pshape))
-    _emit_path(g, pshape, hop_iris)
-    g.add((pshape, SH.minInclusive, _numeric_literal(ast.lo)))
-    g.add((pshape, SH.maxInclusive, _numeric_literal(ast.hi)))
+    ctx.g.add((c_node, SH.property, pshape))
+    _emit_path(ctx.g, pshape, hop_iris)
+    ctx.g.add((pshape, SH.minInclusive, _numeric_literal(ast.lo)))
+    ctx.g.add((pshape, SH.maxInclusive, _numeric_literal(ast.hi)))
 
 
 def _resolve_value_iri(model: Model, prop_fq: str | None, value: str) -> str | None:
@@ -665,39 +670,35 @@ def _resolve_value_iri(model: Model, prop_fq: str | None, value: str) -> str | N
     return f"{vocab.iri}/{value}"
 
 
-def _emit_fixed(  # noqa: PLR0913
-    model: Model, g: Graph, c_node: URIRef | BNode, ns_name: str, ast: Fixed, start_cls: str | None = None
-) -> None:
+def _emit_fixed(ctx: _EmitCtx, c_node: URIRef | BNode, ast: Fixed, start_cls: str | None = None) -> None:
     """Emit a property shape pinning the node reached by *ast.path* to a fixed value (``sh:hasValue``)."""
-    hop_iris, last_fq = _walk_path(model, ns_name, ast.path, start_cls)
+    hop_iris, last_fq = _walk_path(ctx.model, ctx.ns_name, ast.path, start_cls)
     if hop_iris is None:
         return
-    value_iri = _resolve_value_iri(model, last_fq, ast.value)
+    value_iri = _resolve_value_iri(ctx.model, last_fq, ast.value)
     if value_iri is None:
         return
     pshape = BNode()
-    g.add((c_node, SH.property, pshape))
-    _emit_path(g, pshape, hop_iris)
-    g.add((pshape, SH["hasValue"], URIRef(value_iri)))
+    ctx.g.add((c_node, SH.property, pshape))
+    _emit_path(ctx.g, pshape, hop_iris)
+    ctx.g.add((pshape, SH["hasValue"], URIRef(value_iri)))
 
 
-def _emit_selector_pattern(  # noqa: PLR0913
-    model: Model, g: Graph, c_node: URIRef | BNode, ns_name: str, ast: SelectorPattern, start_cls: str | None = None
-) -> None:
+def _emit_selector_pattern(ctx: _EmitCtx, c_node: URIRef | BNode, ast: SelectorPattern, start_cls: str | None = None) -> None:
     """Emit, per entry of the selector's range vocabulary that has a ``pattern``, a guarded
     ``sh:or ( [ sh:not [ selector hasValue entry ] ] [ path sh:pattern entry-pattern ] )``."""
-    hop_iris, _ = _walk_path(model, ns_name, ast.path, start_cls)
-    sel_iri = _resolve_prop_ctx(model, ns_name, ast.selector, start_cls)
+    hop_iris, _ = _walk_path(ctx.model, ctx.ns_name, ast.path, start_cls)
+    sel_iri = _resolve_prop_ctx(ctx.model, ctx.ns_name, ast.selector, start_cls)
     if hop_iris is None or sel_iri is None:
         return
     # The selector is a property of the subject class; resolve its FQ the same way.
-    sel_walk, sel_fq = _walk_path(model, ns_name, (ast.selector,), start_cls)
+    sel_walk, sel_fq = _walk_path(ctx.model, ctx.ns_name, (ast.selector,), start_cls)
     if sel_walk is None:
         return
-    sel_prop = model.properties.get(sel_fq)  # type: ignore[arg-type]
+    sel_prop = ctx.model.properties.get(sel_fq)  # type: ignore[arg-type]
     rng = sel_prop.metadata.get("range", "") if sel_prop else ""
     vocab_fq = rng if rng.startswith("/") else f"/{sel_prop.ns.name}/{rng}" if sel_prop else ""
-    vocab = model.vocabularies.get(vocab_fq)
+    vocab = ctx.model.vocabularies.get(vocab_fq)
     if vocab is None:
         logger.warning("matches-selector %r: %s has no vocabulary range", ast.selector, sel_fq)
         return
@@ -707,46 +708,44 @@ def _emit_selector_pattern(  # noqa: PLR0913
             continue
         antecedent = BNode()
         ant_ps = BNode()
-        g.add((antecedent, SH.property, ant_ps))
-        g.add((ant_ps, SH.path, URIRef(sel_iri)))
-        g.add((ant_ps, SH["hasValue"], URIRef(f"{vocab.iri}/{entry_name}")))
+        ctx.g.add((antecedent, SH.property, ant_ps))
+        ctx.g.add((ant_ps, SH.path, URIRef(sel_iri)))
+        ctx.g.add((ant_ps, SH["hasValue"], URIRef(f"{vocab.iri}/{entry_name}")))
         not_branch = BNode()
-        g.add((not_branch, SH["not"], antecedent))
+        ctx.g.add((not_branch, SH["not"], antecedent))
         consequent = BNode()
         cons_ps = BNode()
-        g.add((consequent, SH.property, cons_ps))
-        _emit_path(g, cons_ps, hop_iris)
-        g.add((cons_ps, SH["pattern"], Literal(str(pattern))))
-        or_list = Collection(g, None)  # type: ignore[arg-type]
+        ctx.g.add((consequent, SH.property, cons_ps))
+        _emit_path(ctx.g, cons_ps, hop_iris)
+        ctx.g.add((cons_ps, SH["pattern"], Literal(str(pattern))))
+        or_list = Collection(ctx.g, None)  # type: ignore[arg-type]
         or_list.append(not_branch)
         or_list.append(consequent)
-        g.add((c_node, SH["or"], or_list.uri))
+        ctx.g.add((c_node, SH["or"], or_list.uri))
 
 
-def _emit_constraint(  # noqa: PLR0913
-    model: Model, g: Graph, c_node: URIRef | BNode, ns_name: str, ast: object, start_cls: str | None = None
-) -> None:
+def _emit_constraint(ctx: _EmitCtx, c_node: URIRef | BNode, ast: object, start_cls: str | None = None) -> None:
     """Dispatch a parsed constraint to its SHACL emitter.
 
     *start_cls* is the fully-qualified class that the path is rooted at (the
     constraint's subject), enabling the contextual type-walk in :func:`_walk_path`.
     """
     if isinstance(ast, Conditional):
-        _emit_conditional(model, g, c_node, ns_name, ast, start_cls)
+        _emit_conditional(ctx, c_node, ast, start_cls)
     elif isinstance(ast, SelectorPattern):
-        _emit_selector_pattern(model, g, c_node, ns_name, ast, start_cls)
+        _emit_selector_pattern(ctx, c_node, ast, start_cls)
     elif isinstance(ast, Cardinality):
-        _emit_cardinality(model, g, c_node, ns_name, ast, start_cls)
+        _emit_cardinality(ctx, c_node, ast, start_cls)
     elif isinstance(ast, Present):
-        _emit_present(model, g, c_node, ns_name, ast, start_cls)
+        _emit_present(ctx, c_node, ast, start_cls)
     elif isinstance(ast, PathType):
-        _emit_path_type(model, g, c_node, ns_name, ast, start_cls)
+        _emit_path_type(ctx, c_node, ast, start_cls)
     elif isinstance(ast, Pattern):
-        _emit_pattern(model, g, c_node, ns_name, ast, start_cls)
+        _emit_pattern(ctx, c_node, ast, start_cls)
     elif isinstance(ast, Range):
-        _emit_range(model, g, c_node, ns_name, ast, start_cls)
+        _emit_range(ctx, c_node, ast, start_cls)
     elif isinstance(ast, Fixed):
-        _emit_fixed(model, g, c_node, ns_name, ast, start_cls)
+        _emit_fixed(ctx, c_node, ast, start_cls)
 
 
 def _gen_class_constraints(model: Model, g: Graph, seen: set[tuple[str, object]]) -> None:
@@ -768,7 +767,7 @@ def _gen_class_constraints(model: Model, g: Graph, seen: set[tuple[str, object]]
             if key in seen:
                 continue
             seen.add(key)
-            _emit_constraint(model, g, c_node, c.ns.name, ast, start_cls=c.fqname)
+            _emit_constraint(_EmitCtx(model, g, c.ns.name), c_node, ast, start_cls=c.fqname)
 
 
 def _endpoint_class_iris(model: Model, ns_name: str, class_names: list[str]) -> tuple[list[str], list[str]]:
@@ -891,93 +890,80 @@ def _emit_gate_not(g: Graph, prof_iri: str, gate_iris: list[str], *, require_pre
     return gate_not
 
 
-def _emit_where_shape(model: Model, g: Graph, ns_name: str, where: tuple[str, ...], start_cls: str | None = None) -> BNode:
+def _emit_where_shape(ctx: _EmitCtx, where: tuple[str, ...], start_cls: str | None = None) -> BNode:
     """Build a node shape (BNode) carrying every ``where`` line as a constraint rooted at *start_cls*."""
     shape = BNode()
     for w in where:
-        _emit_constraint(model, g, shape, ns_name, parse_constraint(w), start_cls)
+        _emit_constraint(ctx, shape, parse_constraint(w), start_cls)
     return shape
 
 
-def _emit_existential(model: Model, g: Graph, ns_name: str, rule: Conformance) -> BNode | None:
+def _emit_existential(ctx: _EmitCtx, rule: Conformance) -> BNode | None:
     """Build a node shape requiring *count* linked *exists* instances satisfying *where*."""
-    exists_fq = _class_fq(ns_name, rule.exists)
-    exists = _resolve_class_iri(model, ns_name, rule.exists)
+    exists_fq = _class_fq(ctx.ns_name, rule.exists)
+    exists = _resolve_class_iri(ctx.model, ctx.ns_name, rule.exists)
     # `where` and `linkedBy` are rooted at the existential class.
-    linked = _resolve_prop_ctx(model, ns_name, rule.linked_by, start_cls=exists_fq)
+    linked = _resolve_prop_ctx(ctx.model, ctx.ns_name, rule.linked_by, start_cls=exists_fq)
     if exists is None or linked is None:
         return None
-    qvs = _emit_where_shape(model, g, ns_name, rule.where, start_cls=exists_fq)
-    g.add((qvs, SH["class"], URIRef(exists)))
+    qvs = _emit_where_shape(ctx, rule.where, start_cls=exists_fq)
+    ctx.g.add((qvs, SH["class"], URIRef(exists)))
     inv = BNode()
-    g.add((inv, SH["inversePath"], URIRef(linked)))
+    ctx.g.add((inv, SH["inversePath"], URIRef(linked)))
     exist_ps = BNode()
-    g.add((exist_ps, SH.path, inv))
-    g.add((exist_ps, SH["qualifiedValueShape"], qvs))
+    ctx.g.add((exist_ps, SH.path, inv))
+    ctx.g.add((exist_ps, SH["qualifiedValueShape"], qvs))
     qmin, qmax = count_bounds(rule.count)
     if qmin is not None:
-        g.add((exist_ps, SH["qualifiedMinCount"], Literal(qmin)))
+        ctx.g.add((exist_ps, SH["qualifiedMinCount"], Literal(qmin)))
     if qmax is not None:
-        g.add((exist_ps, SH["qualifiedMaxCount"], Literal(qmax)))
+        ctx.g.add((exist_ps, SH["qualifiedMaxCount"], Literal(qmax)))
     shape = BNode()
-    g.add((shape, SH.property, exist_ps))
+    ctx.g.add((shape, SH.property, exist_ps))
     return shape
 
 
-def _emit_conformance_rule(  # noqa: PLR0913
-    model: Model,
-    g: Graph,
-    coll_node: URIRef,
-    coll_ref: str,
-    ns_name: str,
-    gate_iris: list[str],
-    prof_iri: str,
-    rule: Conformance,
-    *,
-    is_default: bool = False,
-) -> None:
+def _emit_conformance_rule(ctx: _EmitCtx, gate_ctx: _GateCtx, rule: Conformance, *, is_default: bool = False) -> None:
     """Emit one conformance rule (collection-self, existential, or member-predicate)."""
-    gate = _emit_gate_not(g, prof_iri, gate_iris, require_present=is_default)
+    gate = _emit_gate_not(ctx.g, gate_ctx.prof_iri, gate_ctx.gate_iris, require_present=is_default)
 
     # collection-self mode: the collection, when an <applies_to>, must satisfy where.
     if rule.applies_to:
-        target = _resolve_class_iri(model, ns_name, rule.applies_to)
+        target = _resolve_class_iri(ctx.model, ctx.ns_name, rule.applies_to)
         if target is None:
             return
-        active = _emit_where_shape(model, g, ns_name, rule.where, start_cls=_class_fq(ns_name, rule.applies_to))
+        active = _emit_where_shape(ctx, rule.where, start_cls=_class_fq(ctx.ns_name, rule.applies_to))
         target_node: URIRef = URIRef(target)
     else:
-        for_each = _resolve_class_iri(model, ns_name, rule.for_each)
+        for_each = _resolve_class_iri(ctx.model, ctx.ns_name, rule.for_each)
         # `in:` is a property of the collection class; `where` is rooted at the member class.
-        membership = _resolve_prop_ctx(model, ns_name, rule.membership, start_cls=coll_ref)
+        membership = _resolve_prop_ctx(ctx.model, ctx.ns_name, rule.membership, start_cls=gate_ctx.coll_ref)
         if for_each is None or membership is None:
             return
         inner = (
-            _emit_existential(model, g, ns_name, rule)
-            if rule.exists
-            else _emit_where_shape(model, g, ns_name, rule.where, start_cls=_class_fq(ns_name, rule.for_each))
+            _emit_existential(ctx, rule) if rule.exists else _emit_where_shape(ctx, rule.where, start_cls=_class_fq(ctx.ns_name, rule.for_each))
         )
         if inner is None:
             return
         # Per member: not a <for_each>  OR  the inner shape holds.
         nf_cls = BNode()
-        g.add((nf_cls, SH["class"], URIRef(for_each)))
+        ctx.g.add((nf_cls, SH["class"], URIRef(for_each)))
         not_for_each = BNode()
-        g.add((not_for_each, SH["not"], nf_cls))
-        member_or = Collection(g, None)  # type: ignore[arg-type]
+        ctx.g.add((not_for_each, SH["not"], nf_cls))
+        member_or = Collection(ctx.g, None)  # type: ignore[arg-type]
         member_or.append(not_for_each)
         member_or.append(inner)
         member_ps = BNode()
-        g.add((member_ps, SH.path, URIRef(membership)))
-        g.add((member_ps, SH["or"], member_or.uri))
+        ctx.g.add((member_ps, SH.path, URIRef(membership)))
+        ctx.g.add((member_ps, SH["or"], member_or.uri))
         active = BNode()
-        g.add((active, SH.property, member_ps))
-        target_node = coll_node
+        ctx.g.add((active, SH.property, member_ps))
+        target_node = gate_ctx.coll_node
 
-    top = Collection(g, None)  # type: ignore[arg-type]
+    top = Collection(ctx.g, None)  # type: ignore[arg-type]
     top.append(gate)
     top.append(active)
-    g.add((target_node, SH["or"], top.uri))
+    ctx.g.add((target_node, SH["or"], top.uri))
 
 
 def _gen_conformance(model: Model, g: Graph) -> None:
@@ -1014,8 +1000,10 @@ def _gen_conformance(model: Model, g: Graph) -> None:
         gate_iris = [f"{gate_vocab.iri}/{e}" for e in ([entries] if isinstance(entries, str) else entries)]
         # When the rule gates on the default profile, an omitted profileConformance still applies.
         is_default = default_iri is not None and default_iri in gate_iris
+        ctx = _EmitCtx(model, g, ns.name)
+        gate_ctx = _GateCtx(coll_node, coll_ref, gate_iris, prof_iri)
         for rule in ns.conformance_rules:
-            _emit_conformance_rule(model, g, coll_node, coll_ref, ns.name, gate_iris, prof_iri, rule, is_default=is_default)
+            _emit_conformance_rule(ctx, gate_ctx, rule, is_default=is_default)
 
 
 def _gen_properties(model: Model, g: Graph) -> None:

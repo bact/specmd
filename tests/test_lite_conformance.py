@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+# pylint: disable=redefined-outer-name  # pytest fixture injection shadows module-level names
 
 """End-to-end Lite profile conformance: Markdown -> SHACL -> pySHACL validation.
 
@@ -28,7 +29,7 @@ SW = BASE + "Software/"
 
 
 @pytest.fixture(scope="module")
-def shapes() -> Graph:
+def lite_shapes() -> Graph:
     return gen_rdf_ontology(Model(FIXTURE))
 
 
@@ -40,8 +41,8 @@ def s(name: str) -> URIRef:
     return URIRef(SW + name)
 
 
-def _conforms(shapes: Graph, data: Graph) -> tuple[bool, str]:
-    conforms, _, text = pyshacl.validate(data, shacl_graph=shapes, ont_graph=shapes, inference="rdfs", advanced=True)
+def _conforms(shacl: Graph, data: Graph) -> tuple[bool, str]:
+    conforms, _, text = pyshacl.validate(data, shacl_graph=shacl, ont_graph=shacl, inference="rdfs", advanced=True)
     return conforms, text
 
 
@@ -81,66 +82,66 @@ def _good_graph() -> Graph:
     return g
 
 
-def test_fully_conforming_passes(shapes: Graph) -> None:
-    conforms, text = _conforms(shapes, _good_graph())
+def test_fully_conforming_passes(lite_shapes: Graph) -> None:
+    conforms, text = _conforms(lite_shapes, _good_graph())
     assert conforms, text
 
 
-def test_missing_copyright_text_fails(shapes: Graph) -> None:
+def test_missing_copyright_text_fails(lite_shapes: Graph) -> None:
     g = _good_graph()
     g.remove((URIRef("urn:pkg"), s("copyrightText"), None))
-    conforms, text = _conforms(shapes, g)
+    conforms, text = _conforms(lite_shapes, g)
     assert not conforms
     assert "copyrightText" in text
 
 
-def test_missing_download_and_purl_fails(shapes: Graph) -> None:
+def test_missing_download_and_purl_fails(lite_shapes: Graph) -> None:
     # "at least one of downloadLocation or packageUrl" -> if downloadLocation max 0 then packageUrl min 1.
     g = _good_graph()
     g.remove((URIRef("urn:pkg"), s("downloadLocation"), None))
-    conforms, text = _conforms(shapes, g)
+    conforms, text = _conforms(lite_shapes, g)
     assert not conforms
     assert "packageUrl" in text
 
 
-def test_packageurl_satisfies_disjunction(shapes: Graph) -> None:
+def test_packageurl_satisfies_disjunction(lite_shapes: Graph) -> None:
     # Dropping downloadLocation but supplying packageUrl must still conform.
     g = _good_graph()
     g.remove((URIRef("urn:pkg"), s("downloadLocation"), None))
     g.add((URIRef("urn:pkg"), s("packageUrl"), Literal("pkg:generic/acme@1.0.0", datatype=XSD.anyURI)))
-    conforms, text = _conforms(shapes, g)
+    conforms, text = _conforms(lite_shapes, g)
     assert conforms, text
 
 
-def test_missing_root_element_fails(shapes: Graph) -> None:
+def test_missing_root_element_fails(lite_shapes: Graph) -> None:
     # collection-self rule on SpdxDocument requires rootElement min 1.
     g = _good_graph()
     g.remove((URIRef("urn:doc"), c("rootElement"), None))
-    conforms, text = _conforms(shapes, g)
+    conforms, text = _conforms(lite_shapes, g)
     assert not conforms
     assert "rootElement" in text
 
 
-def test_missing_declared_license_fails(shapes: Graph) -> None:
+def test_missing_declared_license_fails(lite_shapes: Graph) -> None:
     # existential rule: exactly one hasDeclaredLicense relationship per Package.
     g = _good_graph()
     g.remove((URIRef("urn:rel-declared"), None, None))
-    conforms, _ = _conforms(shapes, g)
+    conforms, _ = _conforms(lite_shapes, g)
     assert not conforms
 
 
-def test_agent_member_without_name_fails(shapes: Graph) -> None:
+def test_agent_member_without_name_fails(lite_shapes: Graph) -> None:
     # An Agent that is itself a collection member must have a name (member-predicate).
     g = _good_graph()
     nameless = URIRef("urn:agent2")
     g.add((nameless, RDF.type, c("Agent")))
     g.add((URIRef("urn:doc"), c("element"), nameless))
-    conforms, text = _conforms(shapes, g)
+    conforms, text = _conforms(lite_shapes, g)
     assert not conforms
     assert "name" in text
 
 
-def test_non_lite_collection_is_unconstrained(shapes: Graph) -> None:
+def test_non_lite_collection_is_unconstrained(lite_shapes: Graph) -> None:
     # Without lite conformance, none of the Lite rules apply (no default-core rules here).
     g = Graph()
     doc = URIRef("urn:doc")
@@ -148,7 +149,7 @@ def test_non_lite_collection_is_unconstrained(shapes: Graph) -> None:
     pkg = URIRef("urn:pkg")
     g.add((doc, c("element"), pkg))
     g.add((pkg, RDF.type, s("Package")))  # bare Package, no mandatory props
-    conforms, text = _conforms(shapes, g)
+    conforms, text = _conforms(lite_shapes, g)
     assert conforms, text
 
 

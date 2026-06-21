@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from rdflib import Graph, URIRef
@@ -345,7 +346,7 @@ class TestConditionalValuePresence:
                         if to in set(rdf_graph.objects(ps, SH.path)) and (ps, SH["hasValue"], none) in rdf_graph:
                             found_ante = True
                 for ps in rdf_graph.objects(b, SH.property):
-                    if to in set(rdf_graph.objects(ps, SH.path)) and [int(m) for m in rdf_graph.objects(ps, SH.maxCount)] == [1]:
+                    if to in set(rdf_graph.objects(ps, SH.path)) and [int(str(m)) for m in rdf_graph.objects(ps, SH.maxCount)] == [1]:
                         found_cons = True
         assert found_ante, "missing sh:not[to hasValue NoneElement]"
         assert found_cons, "missing to maxCount 1 consequent"
@@ -357,8 +358,10 @@ class TestConditionalCardinality:
     def test_cond_card_emits_sh_or(self, rdf_graph: Graph) -> None:
         from rdflib.collection import Collection as RDFList
 
-        def _min1(ps: object, prop: str) -> bool:
-            return URIRef(CORE + prop) in set(rdf_graph.objects(ps, SH.path)) and [int(m) for m in rdf_graph.objects(ps, SH.minCount)] == [1]
+        def _min1(ps: Any, prop: str) -> bool:
+            return URIRef(CORE + prop) in set(rdf_graph.objects(ps, SH.path)) and [int(str(m)) for m in rdf_graph.objects(ps, SH.minCount)] == [
+                1
+            ]
 
         coll = URIRef(CORE + "Collection")
         found_ante = found_cons = False
@@ -380,7 +383,6 @@ class TestPathTypeConstraint:
 
     def test_sequence_path_and_class_or(self, rdf_graph: Graph) -> None:
         from rdflib.collection import Collection as RDFList
-        from rdflib.namespace import RDF
 
         coll = URIRef(CORE + "Collection")
         found = None
@@ -412,8 +414,8 @@ class TestConformanceShape:
             paths = list(rdf_graph.objects(ps, SH.path))
             inverse = bool(paths) and (paths[0], SH["inversePath"], from_p) in rdf_graph
             is_rel = (qvs, SH["class"], rel) in rdf_graph
-            qmin = [int(m) for m in rdf_graph.objects(ps, SH["qualifiedMinCount"])]
-            qmax = [int(m) for m in rdf_graph.objects(ps, SH["qualifiedMaxCount"])]
+            qmin = [int(str(m)) for m in rdf_graph.objects(ps, SH["qualifiedMinCount"])]
+            qmax = [int(str(m)) for m in rdf_graph.objects(ps, SH["qualifiedMaxCount"])]
             if inverse and is_rel and qmin == [1] and qmax == [1]:
                 found = True
         assert found, "no inverse-from qualifiedValueShape(Relationship) with exactly-one count"
@@ -422,7 +424,7 @@ class TestConformanceShape:
         # conformance.default-profile=core -> the gate also requires profileConformance present,
         # so an omitted value (defaulting to core) still activates the rule.
         pc = URIRef(CORE + "profileConformance")
-        found = any([int(m) for m in rdf_graph.objects(ps, SH.minCount)] == [1] for ps in rdf_graph.subjects(SH.path, pc))
+        found = any([int(str(m)) for m in rdf_graph.objects(ps, SH.minCount)] == [1] for ps in rdf_graph.subjects(SH.path, pc))
         assert found, "default-profile gate missing sh:minCount 1 on profileConformance"
 
     def test_member_predicate_rule(self, rdf_graph: Graph) -> None:
@@ -439,7 +441,7 @@ class TestConformanceShape:
                 branches = list(RDFList(rdf_graph, or_list))
                 negates_sa = any((cls, SH["class"], sa) in rdf_graph for b in branches for cls in rdf_graph.objects(b, SH["not"]))
                 requires_name = any(
-                    name in set(rdf_graph.objects(ps, SH.path)) and [int(c) for c in rdf_graph.objects(ps, SH.minCount)] == [1]
+                    name in set(rdf_graph.objects(ps, SH.path)) and [int(str(c)) for c in rdf_graph.objects(ps, SH.minCount)] == [1]
                     for b in branches
                     for ps in rdf_graph.objects(b, SH.property)
                 )
@@ -459,7 +461,7 @@ class TestConformanceShape:
         for or_list in rdf_graph.objects(ec, SH["or"]):
             for branch in RDFList(rdf_graph, or_list):
                 mins = {
-                    path: [int(c) for c in rdf_graph.objects(ps, SH.minCount)]
+                    path: [int(str(c)) for c in rdf_graph.objects(ps, SH.minCount)]
                     for ps in rdf_graph.objects(branch, SH.property)
                     for path in rdf_graph.objects(ps, SH.path)
                 }
@@ -501,7 +503,6 @@ class TestPatternConstraint:
 
     def test_pattern_with_flags_on_path(self, rdf_graph: Graph) -> None:
         from rdflib.collection import Collection as RDFList
-        from rdflib.namespace import RDF
 
         coll = URIRef(CORE + "Collection")
         found = None
@@ -521,7 +522,6 @@ class TestPatternConstraint:
         # Collection restates the property's own `customIdToLicense -> key` rule in its
         # `## Constraints` (explicit first hop). AST-level dedup must keep a single shape.
         from rdflib.collection import Collection as RDFList
-        from rdflib.namespace import RDF
 
         coll = URIRef(CORE + "Collection")
         matches = 0
@@ -545,7 +545,7 @@ class TestRangeAndFixedConstraints:
                 lo = list(rdf_graph.objects(ps, SH.minInclusive))
                 hi = list(rdf_graph.objects(ps, SH.maxInclusive))
                 if lo and hi:
-                    bounds.add((int(lo[0]), int(hi[0])))
+                    bounds.add((int(str(lo[0])), int(str(hi[0]))))
         assert bounds == {(0, 10)}
 
     def test_fixed_value(self, rdf_graph: Graph) -> None:
