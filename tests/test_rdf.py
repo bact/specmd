@@ -400,6 +400,73 @@ class TestPathTypeConstraint:
         assert URIRef(CORE + "ElementMap") in allowed
 
 
+class TestConformanceShape:
+    """Structured ``## Profile conformance`` -> inverse-path + qualified value shape on ElementCollection."""
+
+    def test_qualified_existential(self, rdf_graph: Graph) -> None:
+        rel = URIRef(CORE + "Relationship")
+        from_p = URIRef(CORE + "from")
+        found = False
+        for ps, qvs in rdf_graph.subject_objects(SH["qualifiedValueShape"]):
+            paths = list(rdf_graph.objects(ps, SH.path))
+            inverse = bool(paths) and (paths[0], SH["inversePath"], from_p) in rdf_graph
+            is_rel = (qvs, SH["class"], rel) in rdf_graph
+            qmin = [int(m) for m in rdf_graph.objects(ps, SH["qualifiedMinCount"])]
+            qmax = [int(m) for m in rdf_graph.objects(ps, SH["qualifiedMaxCount"])]
+            if inverse and is_rel and qmin == [1] and qmax == [1]:
+                found = True
+        assert found, "no inverse-from qualifiedValueShape(Relationship) with exactly-one count"
+
+    def test_default_profile_gate_requires_presence(self, rdf_graph: Graph) -> None:
+        # conformance.default-profile=core -> the gate also requires profileConformance present,
+        # so an omitted value (defaulting to core) still activates the rule.
+        pc = URIRef(CORE + "profileConformance")
+        found = any([int(m) for m in rdf_graph.objects(ps, SH.minCount)] == [1] for ps in rdf_graph.subjects(SH.path, pc))
+        assert found, "default-profile gate missing sh:minCount 1 on profileConformance"
+
+    def test_member_predicate_rule(self, rdf_graph: Graph) -> None:
+        # `forEach SoftwareArtifact in element where name min 1` (no `exists`) ->
+        # per-member sh:or([not SoftwareArtifact], [sh:property name minCount 1]).
+        from rdflib.collection import Collection as RDFList
+
+        sa = URIRef(CORE + "SoftwareArtifact")
+        element = URIRef(CORE + "element")
+        name = URIRef(CORE + "name")
+        found = False
+        for member_ps in rdf_graph.subjects(SH.path, element):
+            for or_list in rdf_graph.objects(member_ps, SH["or"]):
+                branches = list(RDFList(rdf_graph, or_list))
+                negates_sa = any((cls, SH["class"], sa) in rdf_graph for b in branches for cls in rdf_graph.objects(b, SH["not"]))
+                requires_name = any(
+                    name in set(rdf_graph.objects(ps, SH.path)) and [int(c) for c in rdf_graph.objects(ps, SH.minCount)] == [1]
+                    for b in branches
+                    for ps in rdf_graph.objects(b, SH.property)
+                )
+                if negates_sa and requires_name:
+                    found = True
+        assert found, "no member-predicate rule: SoftwareArtifact member requires name minCount 1"
+
+    def test_collection_self_rule(self, rdf_graph: Graph) -> None:
+        # `appliesTo ElementCollection where element min 1; rootElement min 1` ->
+        # an sh:or branch on ElementCollection requiring both directly (no membership wrapper).
+        from rdflib.collection import Collection as RDFList
+
+        ec = URIRef(CORE + "ElementCollection")
+        element = URIRef(CORE + "element")
+        root = URIRef(CORE + "rootElement")
+        found = False
+        for or_list in rdf_graph.objects(ec, SH["or"]):
+            for branch in RDFList(rdf_graph, or_list):
+                mins = {
+                    path: [int(c) for c in rdf_graph.objects(ps, SH.minCount)]
+                    for ps in rdf_graph.objects(branch, SH.property)
+                    for path in rdf_graph.objects(ps, SH.path)
+                }
+                if mins.get(element) == [1] and mins.get(root) == [1]:
+                    found = True
+        assert found, "no collection-self rule requiring element and rootElement minCount 1"
+
+
 class TestSelectorPattern:
     """``identifier matches externalIdentifierType`` -> per-entry guarded ``sh:pattern``."""
 

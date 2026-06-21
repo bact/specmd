@@ -7,13 +7,16 @@ from __future__ import annotations
 from specmd.constraints import (
     Cardinality,
     Conditional,
+    Conformance,
     Fixed,
     PathType,
     Pattern,
     Present,
     Range,
     SelectorPattern,
+    conformance_to_prose,
     constraint_to_prose,
+    count_bounds,
     parse_constraint,
 )
 from specmd.parse.markdown import ConstraintsSection
@@ -182,3 +185,52 @@ class TestConstraintsSection:
     def test_ignores_blank_and_nonitems(self) -> None:
         sec = ConstraintsSection("\nsome prose\n- one constraint\n")
         assert sec.constraints == ["one constraint"]
+
+
+class TestConformance:
+    def test_count_bounds(self) -> None:
+        assert count_bounds("1") == (1, 1)
+        assert count_bounds("1..*") == (1, None)
+        assert count_bounds("0..1") == (None, 1)
+        assert count_bounds("2..5") == (2, 5)
+
+    def test_conformance_prose(self) -> None:
+        rule = Conformance(
+            for_each="/Core/SoftwareArtifact",
+            membership="element",
+            exists="/Core/Relationship",
+            count="1",
+            linked_by="from",
+            where=("relationshipType is hasConcludedLicense", "to type /Core/AnyLicenseInfo"),
+        )
+        assert conformance_to_prose(rule, "Core") == (
+            "If any collection declares conformance to the Core profile, then for every SoftwareArtifact among its "
+            "members there shall exist exactly 1 Relationship (linked by from) satisfying: the relationshipType "
+            "shall be hasConcludedLicense; each to shall be of type AnyLicenseInfo."
+        )
+
+    def test_conformance_prose_default_profile(self) -> None:
+        rule = Conformance(
+            for_each="/Core/SoftwareArtifact",
+            membership="element",
+            exists="/Core/Relationship",
+            count="1",
+            linked_by="from",
+            where=("relationshipType is hasConcludedLicense",),
+        )
+        prose = conformance_to_prose(rule, "Core", "/Core/ElementCollection", is_default=True)
+        assert prose.startswith("In any ElementCollection (the Core profile applies even when profileConformance is omitted), for every")
+
+    def test_conformance_prose_member_predicate(self) -> None:
+        rule = Conformance(for_each="/Core/SoftwareArtifact", membership="element", where=("name min 1",))
+        assert conformance_to_prose(rule, "Lite", "/Core/ElementCollection") == (
+            "If any ElementCollection declares conformance to the Lite profile, then every SoftwareArtifact among "
+            "its members shall satisfy: the SoftwareArtifact shall have at least 1 name."
+        )
+
+    def test_conformance_prose_collection_self(self) -> None:
+        rule = Conformance(applies_to="/Core/SpdxDocument", where=("element min 1", "rootElement min 1"))
+        assert conformance_to_prose(rule, "Lite") == (
+            "An SpdxDocument declaring conformance to the Lite profile shall satisfy: the SpdxDocument shall have "
+            "at least 1 element; the SpdxDocument shall have at least 1 rootElement."
+        )

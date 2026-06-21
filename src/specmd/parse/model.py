@@ -15,6 +15,8 @@ from typing import Any, ClassVar
 
 import yaml
 
+from specmd.constraints import Conformance
+
 from .markdown import (
     ConstraintsSection,
     ContentSection,
@@ -27,6 +29,38 @@ from .markdown import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_conformance_block(body: str) -> list[Conformance]:
+    """Parse a structured ``## Profile conformance`` block, or ``[]`` for legacy free prose.
+
+    A structured block is a YAML list whose every item is a mapping with a
+    ``forEach`` key (member/existential rule) or an ``appliesTo`` key
+    (collection-self rule); anything else (e.g. legacy numbered prose) yields ``[]``.
+    """
+    try:
+        data = yaml.load(body, Loader=yaml.BaseLoader)  # noqa: S506  # strings-only, no coercion
+    except yaml.YAMLError:
+        return []
+    if not isinstance(data, list) or not all(isinstance(d, dict) and ("forEach" in d or "appliesTo" in d) for d in data):
+        return []
+    rules: list[Conformance] = []
+    for item in data:
+        where_raw = item.get("where") or []
+        where = tuple(str(w) for w in where_raw) if isinstance(where_raw, list) else ()
+        rules.append(
+            Conformance(
+                for_each=item.get("forEach", ""),
+                membership=item.get("in", ""),
+                applies_to=item.get("appliesTo", ""),
+                exists=item.get("exists", ""),
+                count=str(item.get("count", "1")),
+                linked_by=item.get("linkedBy", ""),
+                where=where,
+                binding=item.get("as", ""),  # reserved for future use
+            )
+        )
+    return rules
 
 
 _RE_QUALIFIED_CLASS = re.compile(r"^([^\[]+)(?:\[([^\]]*)\])?$")
@@ -422,8 +456,10 @@ class Namespace:
         if "Profile conformance" in sf.sections:
             cs = ContentSection(sf.sections["Profile conformance"])
             self.conformance: str | None = cs.content
+            self.conformance_rules: list[Conformance] = _parse_conformance_block(cs.content)
         else:
             self.conformance = None
+            self.conformance_rules = []
 
         assert self.name == self.metadata["name"], f"Namespace name {self.name} does not match metadata {self.metadata['name']}"
 

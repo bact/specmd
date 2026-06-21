@@ -1,42 +1,36 @@
 # SPDX-FileType: SOURCE
 # SPDX-License-Identifier: Apache-2.0
 
-"""Parse class-level constraint expressions into a small AST.
+"""Parse constraint expressions into a small AST.
 
 A single parsed constraint feeds two consumers so they never drift:
 
 - :mod:`specmd.generate.rdf` emits SHACL from the AST.
 - the documentation generators render human-readable prose from the AST.
 
-Supported syntax (one constraint per ``- `` list item in a ``## Constraints``
-section):
+A *path* is one or more terms joined with ``->`` (a SHACL sequence path); a
+*term* is a bare local name (resolved in the owner's namespace) or a
+fully-qualified ``/Namespace/Name`` (``/`` is reserved for qualified names, so
+it is not a path separator).
 
-- Conditional cardinality::
+Predicate forms (each usable standalone, or inside ``if … then …``)::
 
-      if <prop> min <m> then <prop> min <n>
+    <path> type <class>(, <class>)*       allowed value class(es)
+    <path> not type <class>(, <class>)*   forbidden (alias for an all-``not`` list)
+    <path> type A, not B                  per-item ``not`` mixes the two
+    <path> matches `<regex>` [flags i]    literal pattern (sh:pattern / sh:flags)
+    <path> in <lo>..<hi>                  numeric range (sh:minInclusive/maxInclusive)
+    <path> is <value>                     fixed value (sh:hasValue)
+    <prop> (min | max) <int>              cardinality
+    <path> has <value>                    value-presence
 
-  "if the class has at least *m* ``<prop>``, it shall also have at least
-  *n* ``<prop>``".
+Compound forms::
 
-- Property-path value type::
+    if <predicate> then <predicate>       conditional (sh:or)
+    <path> matches <selectorProperty>     per-entry pattern from the selector's vocab
 
-      <term>(-> <term>)* type <class-term>(, <class-term>)*
-
-  where each ``<class-term>`` is ``<term>`` (allowed) or ``not <term>``
-  (forbidden). Every node reached by the property path must be an instance of
-  one of the *positive* classes and of none of the *negative* ones. A single hop
-  restricts the property's direct value; a multi-hop path joined with ``->``
-  (e.g. ``customIdToLicense -> elementValue``) restricts a sub-property of the
-  value.
-
-  ``<path> not type <list>`` is an accepted alias meaning every class is
-  negated.
-
-  Each ``<term>`` -- a path hop or a class -- is either a bare local name
-  (resolved in the owner's namespace) or a fully-qualified ``/Namespace/Name``.
-  ``->`` separates path hops so that ``/`` is free to appear inside a qualified
-  name, e.g. ``customIdToLicense -> /Core/elementValue type
-  /ExpandedLicensing/CustomLicense, not SimpleLicensingText``.
+Conformance blocks (``## Profile conformance``) are structured YAML, parsed in
+:mod:`specmd.parse.model` into :class:`Conformance`.
 """
 
 from __future__ import annotations
@@ -161,6 +155,30 @@ class SelectorPattern:
 
     path: tuple[str, ...]
     selector: str
+
+
+@dataclass(frozen=True)
+class Conformance:
+    """A profile-conformance rule (tier 4), in one of three modes.
+
+    - **existential** (``forEach`` + ``exists`` + ``linked_by``): for each
+      *for_each* among a collection's *membership* values there must exist *count*
+      instances of *exists* whose *linked_by* points back at it (inverse path)
+      and which satisfy *where*.
+    - **member predicate** (``forEach`` + ``where``, no ``exists``): each
+      *for_each* member must itself satisfy *where*.
+    - **collection-self** (``applies_to`` + ``where``): the collection, when it is
+      an *applies_to*, must satisfy *where*.
+    """
+
+    for_each: str = ""
+    membership: str = ""
+    applies_to: str = ""
+    exists: str = ""
+    count: str = "1"
+    linked_by: str = ""
+    where: tuple[str, ...] = ()
+    binding: str = ""  # `as:` — original subject name (now superseded by `linked_by`); reserved for `where` references
 
 
 Constraint = Predicate | Conditional | SelectorPattern
@@ -352,7 +370,7 @@ def prepend_path(ast: Constraint | None, hop: str) -> Constraint | None:
     """Return a copy of a path-bearing constraint with *hop* prepended to its path.
 
     Used to scope a property's own constraint through the property name. Returns
-    ``None`` for constraints with no path (e.g. :class:`CondCard`).
+    ``None`` for constraints with no single path (e.g. :class:`Conditional`).
     """
     if isinstance(ast, PathType):
         return PathType(path=(hop, *ast.path), positives=ast.positives, negatives=ast.negatives)
@@ -371,3 +389,80 @@ def property_constraint_to_prose(ast: Constraint | None, prop_name: str) -> str:
     """Render a property-level constraint, scoping the path through *prop_name*."""
     scoped = prepend_path(ast, prop_name)
     return constraint_to_prose(scoped if scoped is not None else ast, prop_name)
+
+
+def count_bounds(count: str) -> tuple[int | None, int | None]:
+    """Parse a conformance ``count`` (``N`` / ``N..*`` / ``N..M``) into ``(min, max)``.
+
+    A zero minimum and a ``*`` maximum are returned as ``None`` (omit the bound).
+    """
+    s = count.strip()
+    if ".." in s:
+        lo, hi = (p.strip() for p in s.split("..", 1))
+        qmin = int(lo) if lo and lo != "0" else None
+        qmax = None if hi == "*" else int(hi)
+    else:
+        qmin = qmax = int(s)
+    return qmin, qmax
+
+
+def _count_phrase(count: str) -> str:
+    s = count.strip()
+    if ".." in s:
+        lo, hi = (p.strip() for p in s.split("..", 1))
+        if hi == "*":
+            return f"at least {lo}"
+        if lo == "0":
+            return f"at most {hi}"
+        return f"between {lo} and {hi}"
+    return f"exactly {count}"
+
+
+def _where_clauses(where: tuple[str, ...], subject: str) -> str:
+    """Render *where* constraints as a ``;``-joined clause list scoped to *subject*."""
+    clauses = []
+    for w in where:
+        sentence = constraint_to_prose(parse_constraint(w), subject)
+        if sentence:
+            clauses.append(sentence[:1].lower() + sentence[1:].rstrip("."))
+    return "; ".join(clauses)
+
+
+def conformance_to_prose(rule: Conformance, profile: str, collection: str = "collection", *, is_default: bool = False) -> str:
+    """Render a :class:`Conformance` rule as an English sentence for the namespace page.
+
+    *collection* is the configured collection class's local name (e.g. ``ElementCollection``).
+    *is_default* indicates the profile applies even when ``profileConformance`` is omitted.
+    """
+    coll = _short(collection)
+
+    # collection-self mode: the collection, when it is an applies_to, must satisfy where.
+    if rule.applies_to:
+        subj = _short(rule.applies_to)
+        clauses = _where_clauses(rule.where, subj)
+        if is_default:
+            head = f"Every {subj} (the {profile} profile applies even when profileConformance is omitted)"
+        else:
+            head = f"An {subj} declaring conformance to the {profile} profile"
+        return f"{head} shall satisfy: {clauses}." if clauses else f"{head} conforms."
+
+    if is_default:
+        # The default profile applies to every collection (omitted profileConformance means it).
+        lead = f"In any {coll} (the {profile} profile applies even when profileConformance is omitted), "
+    else:
+        lead = f"If any {coll} declares conformance to the {profile} profile, then "
+
+    # existential mode: forEach member there must exist linked instances.
+    if rule.exists:
+        clauses = _where_clauses(rule.where, _short(rule.exists))
+        base = (
+            f"{lead}for every {_short(rule.for_each)} among its members there shall exist {_count_phrase(rule.count)} "
+            f"{_short(rule.exists)} (linked by {_short(rule.linked_by)})"
+        )
+        return base + (f" satisfying: {clauses}." if clauses else ".")
+
+    # member-predicate mode: each member must itself satisfy where.
+    subj = _short(rule.for_each)
+    clauses = _where_clauses(rule.where, subj)
+    base = f"{lead}every {subj} among its members shall satisfy"
+    return base + (f": {clauses}." if clauses else " its constraints.")

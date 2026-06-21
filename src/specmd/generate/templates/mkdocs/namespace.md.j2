@@ -9,10 +9,20 @@
 {% endblock %}
 
 {% block extra %}
-{% if conformance %}
+{% set show_structured = conformance_rules and conformance_mode != 'prose' %}
+{% set show_prose = conformance and (conformance_mode in ('prose', 'both') or not conformance_rules) %}
+{% if show_structured or show_prose %}
 
 ## Profile conformance
 
+{% if show_structured %}
+{% for line in conformance_prose(conformance_rules, metadata["name"]) %}
+- {{line}}
+{% endfor %}
+{% endif %}
+{% if show_prose %}
+
 {{conformance}}
+{% endif %}
 {% endif %}
 {% endblock %}

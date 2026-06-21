@@ -143,3 +143,37 @@ plantuml:
 
   # PlantUML scale directive -- controls the output canvas size.
   scale: "4000*4000"
+
+# ---------------------------------------------------------------------------
+# Profile conformance  (drives SHACL from the structured ## Profile conformance
+# blocks in namespace files; see docs/constraints-spec.md)
+# ---------------------------------------------------------------------------
+
+conformance:
+  # The collection class that conformance shapes target, and the property whose
+  # value selects a profile. Defaults shown (SPDX 3).
+  collection-class: /Core/ElementCollection
+  profile-property: /Core/profileConformance
+
+  # The ProfileIdentifierType entry assumed when profile-property is omitted.
+  # In SPDX 3, an ElementCollection with no profileConformance is treated as
+  # conforming to "core", so the core conformance rule still applies to it.
+  # Set this so the gate treats an omitted value as that profile (and not as
+  # "rule inactive"). Leave unset for no default.
+  default-profile: core
+
+  # How the namespace pages render the conformance section:
+  #   structured (default) -- generated prose from the structured block (+ SHACL)
+  #   prose                 -- the legacy free-text prose only (no SHACL)
+  #   both                  -- both (SHACL still from the structured block)
+  prose: structured
+
+  # Which ProfileIdentifierType entry(ies) each namespace's conformance block
+  # gates on. A namespace need not map 1:1 to a profile id by name -- e.g. the
+  # Licensing namespace relates to simpleLicensing and expandedLicensing.
+  # (See spdx/spdx-3-model#1238.) The full IRI is derived from base-uri +
+  # Core/ProfileIdentifierType/<name>, so list entry names here, not IRIs.
+  profile:
+    Licensing: [simpleLicensing, expandedLicensing]
+    Security: security
+    Software: software

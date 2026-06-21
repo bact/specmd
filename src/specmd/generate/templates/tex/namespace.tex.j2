@@ -17,7 +17,19 @@
 \hline
 \end{tabular}
 %
-{% if conformance %}
+{% set show_structured = conformance_rules and conformance_mode != 'prose' %}
+{% set show_prose = conformance and (conformance_mode in ('prose', 'both') or not conformance_rules) %}
+{% if show_structured or show_prose %}
 \spdxpagepart{Profile conformance}
+{% if show_structured %}
+\begin{itemize}
+\tightlist
+{% for line in conformance_prose(conformance_rules, metadata["name"]) %}
+\item {{tex_escape(line)}}
+{% endfor %}
+\end{itemize}
+{% endif %}
+{% if show_prose %}
 {{markdown_to_tex(conformance)}}
+{% endif %}
 {% endif %}

@@ -47,3 +47,8 @@ RelationshipType is a vocabulary of directed relationships between software elem
     - Agent
     - not Collection
   - relationshipClass: Relationship
+- hasConcludedLicense:
+  - description: The from SoftwareArtifact has the to AnyLicenseInfo as its concluded license.
+  - from: SoftwareArtifact
+  - to: AnyLicenseInfo
+  - relationshipClass: Relationship

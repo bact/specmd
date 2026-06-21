@@ -6,10 +6,15 @@ SPDX-License-Identifier: CC0-1.0
 
 # SpecMD constraints — consolidated design spec
 
-Status: **proposal** (not yet implemented). Unifies the constraint mechanisms
-(class `## Constraints`, property `## Constraints`, vocabulary `from`/`to`,
-`## Profile conformance`) into one model, and catalogs every proposed rule with
-its SpecMD input, rendered prose, SHACL, and provenance.
+Status: **all four tiers implemented** (predicates, `if … then …`,
+vocabulary-driven, conformance), tested and pySHACL-verified. Remaining
+cross-cutting items — the contextual type-walk resolver, explicit-first-hop on
+property files, and AST-level dedup — are not yet done (paths currently resolve
+within a single namespace; property constraints auto-prepend the property name).
+Unifies the constraint mechanisms (class `## Constraints`, property
+`## Constraints`, vocabulary `from`/`to`, `## Profile conformance`) into one
+model, and catalogs every rule with its SpecMD input, rendered prose, SHACL, and
+provenance.
 
 ## Layers — keep these three apart
 
@@ -41,7 +46,9 @@ authored.
    (incl. cardinality and value-presence).
 3. **Vocabulary-driven** — a vocabulary entry carries a constraint
    (`from`/`to`, `pattern`) applied conditionally on a selector property.
-4. **Conformance** — a quantified `forEach`/`exists` rule, gated by profile.
+4. **Conformance** — a profile-gated rule over a collection, in one of three
+   modes: existential (`forEach`/`exists`), member-predicate (`forEach`+`where`),
+   or collection-self (`appliesTo`+`where`).
 
 ## Scope-by-location
 
@@ -57,7 +64,7 @@ Identical syntax; **where it is written decides what it constrains.**
 ## Grammar
 
 ```ebnf
-constraint  = cond | type-scope | pattern | range | fixed | quantified ;
+constraint  = cond | predicate | selector ;
 
 cond        = "if" predicate "then" predicate ;
 predicate   = type-scope | pattern | range | fixed | card | present ;
@@ -68,6 +75,7 @@ range       = path "in" number ".." number ;
 fixed       = path "is" term ;
 card        = prop ("min" | "max") int ;
 present     = path "has" term ;
+selector    = path "matches" prop ;   (* arg is a property (no backtick) -> vocab-entry pattern binding *)
 
 path        = term { "->" term } ;
 class-list  = class-term { "," class-term } ;
@@ -81,8 +89,12 @@ term        = name | "/" ns "/" name ;        (* bare or fully-qualified *)
   meaning every item negated.
 - Exact-duplicate class terms are removed (order preserved).
 
-Vocabulary `from`/`to` use the same `class-list` as YAML scalar or block list.
-The conformance block is structured YAML (`forEach`/`as`/`exists`/`count`/`where`).
+Vocabulary `from`/`to` use the same `class-list` (with per-item `not`) as a YAML
+scalar or block list. The conformance block (tier 4) is structured YAML:
+`forEach` (or `appliesTo`), `in`, `exists`, `count`, `linkedBy`, `where`, and a
+reserved `as` (superseded by `linkedBy`). `where:` is a list of the constraint
+expressions above; it is applied to the existential, the member, or the
+collection itself depending on the rule mode (see Tier 4).
 
 ## Resolution
 
@@ -114,7 +126,7 @@ One renderer. Terms show local names, falling back to qualified on collision.
 | range | `Each <path> shall be between M and N.` |
 | fixed | `The <path> shall be <value>.` |
 | if/then | `If <cond>, then <consequent>.` |
-| conformance | `For every <T> in a collection conforming to this profile, there shall exist exactly <n> <C> with …` |
+| conformance | `If any <Collection> declares conformance to the <P> profile, then for every <T> among its members there shall exist <n> <C> …` |
 
 ---
 
@@ -305,25 +317,49 @@ sh:or ( [ sh:not [ sh:property [ sh:path :cvssScore ; sh:minInclusive 7.0 ; sh:m
 
 ## Tier 4 — conformance
 
-### 12. Profile conformance (`forEach` / `exists`)
+A `## Profile conformance` block is a YAML list of rules. Every rule is gated on
+the profile (an `ElementCollection` whose `profileConformance` names it; an
+omitted value defaults to the configured `default-profile`). A rule comes in one
+of **three modes**, distinguished by its keys:
 
-- **Syntax** (activation implicit — it is this profile's conformance block):
+| Mode | Keys | Means |
+| - | - | - |
+| **existential** | `forEach` + `exists` + `linkedBy` (+ `in`, `count`, `where`) | for each member of type `forEach`, there must exist *count* `exists` instances linked back by `linkedBy` and satisfying `where` |
+| **member-predicate** | `forEach` + `where` (+ `in`), **no** `exists` | each member of type `forEach` must itself satisfy `where` |
+| **collection-self** | `appliesTo` + `where` | the collection, when it is an `appliesTo`, must satisfy `where` |
+
+`where:` is a list of ordinary **constraint expressions** (the full predicate
+algebra via `parse_constraint`), so cardinality, `if … then …`, type-scope,
+ranges, etc. all apply. `as:` originally named the `forEach` subject so a `where`
+predicate could anchor the existential (e.g. `from: artifact`); `linkedBy:` (the
+inverse-path anchor) superseded it, so `as:` is now **reserved** — still parsed,
+not emitted. Activation is implicit (it is this profile's block).
+
+### 12. Profile conformance — existential (`forEach` / `exists`)
+
+`exists` is any class; `linkedBy` is the property on it that points back to the
+subject (the inverse-path anchor); `in:` names the collection's membership
+property.
+
+- **Syntax:**
 
 ```yaml
 - forEach: /Software/SoftwareArtifact
-  as: artifact
+  in: element
   exists: /Core/Relationship
   count: 1
+  linkedBy: from
   where:
-    - relationshipType: hasConcludedLicense
-    - from: artifact
-    - to: /SimpleLicensing/AnyLicenseInfo
+    - relationshipType is hasConcludedLicense
+    - to type /SimpleLicensing/AnyLicenseInfo
 ```
+
+`count:` accepts `N`, `N..*`, or `N..M` → `sh:qualifiedMinCount`/`MaxCount`.
 
 - **Section/File:** `## Profile conformance` · [Licensing/Licensing.md][m-licensing]
 - **Provenance:** authored (legacy = prose in `## Profile conformance`, parsed-but-unused today)
 - **Refs:** [Licensing namespace][m-licensing] · [SoftwareArtifact][m-swartifact] · [Relationship][m-rel] · [AnyLicenseInfo][m-anylic] · [profileConformance][m-profconf] · [ElementCollection][m-elemcoll]
-- **Prose:** *For every SoftwareArtifact in a collection conforming to this profile, there shall exist exactly one Relationship of type hasConcludedLicense with that artifact as its from and an AnyLicenseInfo as its to.*
+- **Prose:** *If any ElementCollection declares conformance to the Licensing profile, then for every SoftwareArtifact among its members there shall exist exactly 1 Relationship (linked by from) satisfying: the relationshipType shall be hasConcludedLicense; each to shall be of type AnyLicenseInfo.*
 - **SHACL:**
 
 ```turtle
@@ -339,6 +375,50 @@ sh:or ( [ sh:not [ sh:property [ sh:path :cvssScore ; sh:minInclusive 7.0 ; sh:m
               sh:property [ sh:path :to ; sh:class :AnyLicenseInfo ] ] ;
             sh:qualifiedMinCount 1 ; sh:qualifiedMaxCount 1 ] ] ) ] ] ) ) .
 ```
+
+### 12b. Profile conformance — member-predicate (`forEach` + `where`, no `exists`)
+
+Drop `exists`/`linkedBy` and `where:` applies to the **member** itself. Use it
+for profile-gated mandatory properties on a member class (e.g. Lite's
+"every Package shall have `copyrightText`").
+
+- **Syntax:**
+
+```yaml
+- forEach: /Software/Package
+  in: element
+  where:
+    - copyrightText min 1
+    - packageVersion min 1
+    - if downloadLocation max 0 then packageUrl min 1   # "at least one of … or …"
+```
+
+- **Prose:** *If any ElementCollection declares conformance to the Lite profile, then every Package among its members shall satisfy: the Package shall have at least 1 copyrightText; …*
+- **SHACL:** per member, `sh:or ( [ sh:not [ sh:class :Package ] ] [ <where node shape> ] )` under `sh:path :element`, gated by the profile (same outer `sh:or` as 12).
+
+### 12c. Profile conformance — collection-self (`appliesTo` + `where`)
+
+No `forEach`; `where:` applies to the **collection itself** when it is an
+`appliesTo`. Use it for constraints on the collection node (e.g. Lite's
+"an SpdxDocument shall have at least one `element` and `rootElement`").
+
+- **Syntax:**
+
+```yaml
+- appliesTo: /Core/SpdxDocument
+  where:
+    - element min 1
+    - rootElement min 1
+```
+
+- **Prose:** *An SpdxDocument declaring conformance to the Lite profile shall satisfy: the SpdxDocument shall have at least 1 element; the SpdxDocument shall have at least 1 rootElement.*
+- **SHACL:** targets `:SpdxDocument`; `sh:or ( [ <gate-not> ] [ <where node shape> ] )` — the active branch carries the `where` constraints directly (no membership wrapper).
+
+These three modes together express the full Lite profile: licensing
+existentials (12), mandatory member properties incl. "at least one of A or B"
+(12b), and document/SBOM cardinality (12c). The NTIA SBOM Minimum Elements can
+be authored the same way (member-predicate + collection-self rules gated on an
+`ntia` profile entry).
 
 ## Issue coverage
 
@@ -364,13 +444,19 @@ sh:or ( [ sh:not [ sh:property [ sh:path :cvssScore ; sh:minInclusive 7.0 ; sh:m
 - **rdf.py**: replace single-namespace resolution with the contextual
   type-walk; `_emit_class_choice` emits positives **and** negatives; new emitters
   for `pattern`/`range`/`fixed`/`present`; `from`/`to` gains per-item `not`; new
-  vocabulary-`pattern` + binding emitter; new conformance (`forEach`) emitter
-  (target `ElementCollection`, profile gate, qualified value shape). Track a
+  vocabulary-`pattern` + binding emitter. New conformance (`forEach`) emitter
+  (3B): target the configured collection class, gate on the profile property,
+  universal over the `in:` membership filtered to `forEach`, inverse-path of
+  `linkedBy`, `sh:qualifiedValueShape` whose body is `sh:class <exists>` plus the
+  `where:` lines emitted via the existing `_emit_constraint`, and
+  `sh:qualifiedMin/MaxCount` from `count` (`N` / `N..*` / `N..M`). Track a
   per-class set of already-emitted constraint ASTs and skip duplicates
   (decision 3).
-- **model.py**: parse vocabulary entry `pattern`; parse structured
-  `## Profile conformance`; read the `conformance.profile` map from
-  `specmd.yml`; validate property-file first hop = the property.
+- **model.py**: parse vocabulary entry `pattern`; parse the structured
+  `## Profile conformance` block (3B/2B keys) into `Namespace.conformance_rules`;
+  read the `conformance` config (`collection-class`, `profile-property`,
+  `profile` map, `prose` mode) from `specmd.yml`; validate property-file first
+  hop = the property.
 - **templates**: property pages use the same `constraint_prose` as classes;
   render conformance prose on the namespace page.
 - **fixtures/tests/docs**: add a 2-namespace fixture; per-construct tests;
@@ -388,14 +474,30 @@ sh:or ( [ sh:not [ sh:property [ sh:path :cvssScore ; sh:minInclusive 7.0 ; sh:m
 3. **Duplicate emission — DEDUPE (AST level).** When the same constraint is
    authored on both a property and a class that uses it, the generator emits the
    shape once per class: it tracks the set of constraint ASTs already emitted on
-   each class and skips repeats. AST-tuple equality (the `PathType`/`CondCard`
+   each class and skips repeats. AST-tuple equality (the frozen predicate
    dataclasses), not RDF graph comparison. See *Duplicate emission* below.
 4. **Profile gate — CONFIG.** A namespace does not map 1:1 to a profile id by
    convention (e.g. the `Licensing` namespace relates to **both**
    `simpleLicensing` and `expandedLicensing`), so the gate value is configured.
    See *Conformance gate* below.
 
-All four decisions are settled; the spec is implementation-ready.
+### Tier-4 (conformance) sub-decisions
+
+1. **Count grammar — `N` / `N..*` / `N..M`** → `sh:qualifiedMinCount`/`MaxCount`
+   (same convention as cardinality, `*` = unbounded).
+2. **Membership property — 2B (per block `in:`).** Each conformance rule names
+   the collection→members property it iterates; the collection class and gate
+   property stay in config. Supports rules over different membership properties.
+3. **Existential — 3B (generalized).** `exists` is any class; `linkedBy` is the
+   inverse-path anchor; `where:` is a list of ordinary constraint expressions on
+   the existential (reuses `parse_constraint` / `_emit_constraint`). `as:`
+   (original subject binding, superseded by `linkedBy`) is reserved — parsed,
+   not emitted. Two further modes drop `exists` (member-predicate) or replace
+   `forEach`/`in` with `appliesTo` (collection-self); see Tier 4.
+4. **Prose vs structured — config `conformance.prose`** = `structured`
+   (default) | `prose` | `both`. SHACL always derives from the structured block.
+
+All decisions are settled; the spec is implementation-ready.
 
 ## Conformance gate (decision 4)
 
@@ -408,6 +510,10 @@ config holds names, not IRIs:
 ```yaml
 # specmd.yml
 conformance:
+  collection-class: /Core/ElementCollection   # target of conformance shapes (default)
+  profile-property: /Core/profileConformance  # the gate property (default)
+  default-profile: core                       # assumed when profileConformance is omitted
+  prose: structured                           # structured (default) | prose | both
   # namespace -> the ProfileIdentifierType entry(ies) the block gates on
   profile:
     Licensing: expandedLicensing      # or: [simpleLicensing, expandedLicensing]
@@ -415,7 +521,24 @@ conformance:
     Software: software
 ```
 
+Decisions **2B** and **3B** apply: the collection **class** and **gate
+property** are config (defaulting to SPDX, as above); the **membership
+property** is named per block as `in:`; the existential is generalized via
+`linkedBy` + a `where:` list of constraint expressions. `prose:` selects whether
+the structured block, the legacy free prose, or both are rendered (SHACL always
+comes from the structured block).
+
 `profileConformance` has at least one of the listed entries → the rule activates.
+
+**Default profile.** SPDX 3 states *"If the profileConformance property is not
+provided, 'core' is to be assumed as the default."* When a rule gates on the
+configured `default-profile`, the gate also requires `profileConformance` to be
+**present** (`sh:not[hasValue …]` **and** `sh:minCount 1`), so an *omitted* value
+— which defaults to the default profile — still activates the rule. A collection
+that explicitly lists *other* profiles (and not the default) is not held to the
+default rule. The rendered prose for a default-profile rule reads "In any
+ElementCollection (the … profile applies even when profileConformance is
+omitted), …" rather than the conditional "If any … declares …".
 *(Alternative considered: name the profile inside the block as a term reference,
 `profile: /Core/ProfileIdentifierType/expandedLicensing`, needing no config — kept
 config per the decision, but the in-block form remains a clean fallback if a

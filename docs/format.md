@@ -335,15 +335,24 @@ The optional `Constraints` heading on a class holds rules that span more than
 one of the class's properties, or that restrict the type of a node reached by
 following the class's properties. Each constraint is a single `- ` list item:
 
+A `<path>` is one or more terms joined with `->` (a property path); a `<class>`
+list may mix allowed and forbidden (`not`) classes. Each `<term>` is a bare
+local name (resolved in the owner's namespace) or a fully-qualified
+`/Namespace/Name` (`/` is reserved for qualified names, so it is not a path
+separator).
+
 | Expression | Meaning |
 | - | - |
-| `if <X> min <m> then <Y> min <n>` | If the class has at least *m* `<X>`, it shall also have at least *n* `<Y>`. |
-| `<term>(-> <term>)* type <term>(, <term>)*` | Every node reached by following the property path shall be an instance of one of the named classes. |
-| `<term>(-> <term>)* not type <term>(, <term>)*` | No node reached by following the property path may be an instance of any of the named classes. |
+| `<path> type <class>, …` | Reached node is one of the classes (`sh:class`/`sh:or`). |
+| `<path> type A, not B` | …is `A` and not `B` (per-item `not`; `not type <list>` = all negated). |
+| ``<path> matches `<regex>` [flags i]`` | Literal matches the regex (`sh:pattern`/`sh:flags`). |
+| `<path> in <lo>..<hi>` | Number within the inclusive range (`sh:minInclusive`/`maxInclusive`). |
+| `<path> is <value>` | Value equals an individual / vocab entry (`sh:hasValue`). |
+| `if <predicate> then <predicate>` | Conditional (`sh:or`); a predicate is any row above, plus `<prop> min/max <n>` and `<path> has <value>`. |
+| `<path> matches <selectorProperty>` | Literal matches the `pattern` of the entry the selector currently has (per-entry `sh:pattern`). |
 
-Each `<term>` — a path hop or a class — is either a bare local name (resolved
-in the owner's namespace) or a fully-qualified `/Namespace/Name`. Path hops are
-separated by `->` so that `/` is free to appear inside a qualified name.
+The full catalog with SHACL for every form is in
+[docs/constraints-spec.md](constraints-spec.md).
 
 The path of a `type` / `not type` constraint starts from one of the class's own
 properties. To restrict the type of a property's value independently of any

@@ -260,24 +260,27 @@ well-formed and self-contained under OWL 2 without requiring
 ### Class-level constraints
 
 The `## Constraints` section compiles to SHACL on a class's node shape. None
-of these have a spec-parser equivalent.
+of these have a spec-parser equivalent. Paths use `->` (sequence path); class
+lists allow per-item `not`.
 
-- **Conditional cardinality** (`if X min m then Y min n`) → `sh:or` of
-  "antecedent fails" (`X` has `sh:maxCount m-1`) and "consequent holds"
-  (`Y` has `sh:minCount n`).
-- **Value type scoping** (`a / b type C, D`) → an `sh:property` shape whose
-  `sh:path` is a SHACL **sequence path** for multi-hop paths, restricting
-  the reached node with `sh:class` (one class) or `sh:or` of `sh:class`
-  (several). This expresses constraints on a property of a property's value
-  (e.g. an `ElementMap`'s `elementValue`) that cardinality and range alone
-  cannot.
-- **Type exclusion** (`a not type C`) → the same shape with the class choice
-  wrapped in `sh:not`.
+- **Type scoping** (`a -> b type C, not D`) → an `sh:property` shape whose
+  `sh:path` is a sequence path for multi-hop paths, with positive classes via
+  `sh:class`/`sh:or` and each negative via `sh:not [ sh:class ]`. Expresses
+  constraints on a property of a property's value (e.g. an `ElementMap`'s
+  `elementValue`) that cardinality and range alone cannot.
+- **Pattern / range / fixed** (`x matches `…``, `x in m..n`, `x is V`) →
+  `sh:pattern`/`sh:flags`, `sh:minInclusive`/`sh:maxInclusive`, `sh:hasValue`.
+- **Conditional** (`if <p> then <q>`) → `sh:or ( [ sh:not [ p ] ] [ q ] )`, where
+  `p`/`q` are any predicate (incl. `min`/`max` cardinality and value-presence
+  `has`).
+- **Selector pattern** (`identifier matches externalIdentifierType`) → one
+  guarded `sh:pattern` per entry of the selector's vocabulary that declares a
+  `pattern`.
 
-A type constraint may be authored on the **property** rather than a class
-(`## Constraints` on the property file, written relative to the value). SpecMD
-prepends the property name to the path and emits the same shape on every class
-that uses the property, so a property-intrinsic rule is declared once and
+A type constraint may instead be authored on the **property** rather than a
+class (`## Constraints` on the property file, written relative to the value).
+SpecMD prepends the property name to the path and emits the same shape on every
+class that uses the property, so a property-intrinsic rule is declared once and
 enforced everywhere the property appears.
 
 A single parsed constraint feeds both the SHACL emitter and the prose
@@ -300,10 +303,24 @@ This is encoded per entry as
 ```
 
 An endpoint declared only as the root `Element` is treated as unconstrained
-(it is already the `range` of `from`/`to`) and emits no shape. Entries whose
-`relationshipClass`, `from`, or `to` cannot be resolved are skipped with a
-warning. spec-parser captures `from`/`to` only as prose; it produces no such
-validation.
+(it is already the `range` of `from`/`to`) and emits no shape. `from`/`to` items
+may carry a per-item `not`. Entries whose `relationshipClass`, `from`, or `to`
+cannot be resolved are skipped with a warning. spec-parser captures `from`/`to`
+only as prose; it produces no such validation.
+
+### Profile conformance
+
+A structured `## Profile conformance` block (`forEach` / `in` / `exists` /
+`count` / `linkedBy` / `where`) compiles to a quantified SHACL rule on the
+configured collection class, gated on `profileConformance`: for every member of
+the named type, an inverse-path of `linkedBy` plus `sh:qualifiedValueShape`
+(whose body is `sh:class <exists>` and the `where` constraints) with
+`sh:qualifiedMin/MaxCount` from `count`. The `where:` lines are ordinary
+constraint expressions, so the existential reuses the full predicate set. The
+profile→`ProfileIdentifierType` mapping and structural terms come from the
+`conformance:` config (see [docs/constraints-spec.md](constraints-spec.md)); a
+namespace's legacy free-prose conformance is still rendered per
+`conformance.prose`.
 
 ---
 

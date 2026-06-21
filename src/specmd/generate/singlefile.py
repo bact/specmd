@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 from jinja2 import Environment, PackageLoader, select_autoescape
 
-from specmd.constraints import constraint_to_prose, parse_constraint, property_constraint_to_prose
+from specmd.constraints import Conformance, conformance_to_prose, constraint_to_prose, parse_constraint, property_constraint_to_prose
 
 if TYPE_CHECKING:
     from specmd.parse.model import Model
@@ -33,6 +33,19 @@ def gen_singlefile(model: Model, outpath: Path, cfg: Any) -> None:  # pylint: di
     jinja.globals["not_none"] = lambda x: str(x) if x is not None else ""
     jinja.globals["constraint_prose"] = lambda raw, cname: constraint_to_prose(parse_constraint(raw), cname)
     jinja.globals["property_constraint_prose"] = lambda raw, pname: property_constraint_to_prose(parse_constraint(raw), pname)
+    _conf_cfg = model.config.get("conformance", {})
+    _coll = _conf_cfg.get("collection-class", "/Core/ElementCollection")
+    _default_profile = _conf_cfg.get("default-profile")
+    _profile_map = _conf_cfg.get("profile", {}) or {}
+
+    def _conformance_prose(rules: list[Conformance], name: str) -> list[str]:
+        entries = _profile_map.get(name, [])
+        entries = [entries] if isinstance(entries, str) else entries
+        is_default = _default_profile is not None and _default_profile in entries
+        return [conformance_to_prose(r, name, _coll, is_default=is_default) for r in rules]
+
+    jinja.globals["conformance_prose"] = _conformance_prose
+    jinja.globals["conformance_mode"] = _conf_cfg.get("prose", "structured")
 
     output_file = outpath / "model.md"
     p = outpath / "files"

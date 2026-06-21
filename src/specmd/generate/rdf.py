@@ -21,12 +21,14 @@ from rdflib.tools.rdf2dot import rdf2dot
 from specmd.constraints import (
     Cardinality,
     Conditional,
+    Conformance,
     Fixed,
     PathType,
     Pattern,
     Present,
     Range,
     SelectorPattern,
+    count_bounds,
     parse_constraint,
     prepend_path,
 )
@@ -265,6 +267,7 @@ def gen_rdf_ontology(model: Model) -> Graph:
     _gen_classes(model, g)
     _gen_class_constraints(model, g)
     _gen_relationship_constraints(model, g)
+    _gen_conformance(model, g)
     _gen_properties(model, g)
     _gen_vocabularies(model, g)
     _gen_individuals(model, g)
@@ -745,6 +748,160 @@ def _gen_relationship_constraints(model: Model, g: Graph) -> None:
             or_list.append(not_node)
             or_list.append(consequent)
             g.add((URIRef(rel_class_iri), SH["or"], or_list.uri))
+
+
+def _emit_gate_not(g: Graph, prof_iri: str, gate_iris: list[str], *, require_present: bool = False) -> BNode:
+    """Return a node shape that conforms iff the gate property has *none* of *gate_iris*.
+
+    When *require_present* is true (the rule's profile is the **default**, so an
+    omitted ``profileConformance`` is treated as that profile), the shape also
+    requires the property to be present — so an omitted value is *not* treated as
+    inactive, and the rule still applies.
+    """
+    if len(gate_iris) == 1:
+        inner = BNode()
+        ips = BNode()
+        g.add((inner, SH.property, ips))
+        g.add((ips, SH.path, URIRef(prof_iri)))
+        g.add((ips, SH["hasValue"], URIRef(gate_iris[0])))
+    else:
+        or_list = Collection(g, None)  # type: ignore[arg-type]
+        for gi in gate_iris:
+            b = BNode()
+            bps = BNode()
+            g.add((b, SH.property, bps))
+            g.add((bps, SH.path, URIRef(prof_iri)))
+            g.add((bps, SH["hasValue"], URIRef(gi)))
+            or_list.append(b)
+        inner = BNode()
+        g.add((inner, SH["or"], or_list.uri))
+    gate_not = BNode()
+    g.add((gate_not, SH["not"], inner))
+    if require_present:
+        present = BNode()
+        g.add((gate_not, SH.property, present))
+        g.add((present, SH.path, URIRef(prof_iri)))
+        g.add((present, SH["minCount"], Literal(1)))
+    return gate_not
+
+
+def _emit_where_shape(model: Model, g: Graph, ns_name: str, where: tuple[str, ...]) -> BNode:
+    """Build a node shape (BNode) carrying every ``where`` line as a constraint."""
+    shape = BNode()
+    for w in where:
+        _emit_constraint(model, g, shape, ns_name, parse_constraint(w))
+    return shape
+
+
+def _emit_existential(model: Model, g: Graph, ns_name: str, rule: Conformance) -> BNode | None:
+    """Build a node shape requiring *count* linked *exists* instances satisfying *where*."""
+    exists = _resolve_class_iri(model, ns_name, rule.exists)
+    linked = _resolve_prop_iri(model, ns_name, rule.linked_by)
+    if exists is None or linked is None:
+        return None
+    qvs = _emit_where_shape(model, g, ns_name, rule.where)
+    g.add((qvs, SH["class"], URIRef(exists)))  # type: ignore[arg-type]
+    inv = BNode()
+    g.add((inv, SH["inversePath"], URIRef(linked)))  # type: ignore[arg-type]
+    exist_ps = BNode()
+    g.add((exist_ps, SH.path, inv))
+    g.add((exist_ps, SH["qualifiedValueShape"], qvs))
+    qmin, qmax = count_bounds(rule.count)
+    if qmin is not None:
+        g.add((exist_ps, SH["qualifiedMinCount"], Literal(qmin)))
+    if qmax is not None:
+        g.add((exist_ps, SH["qualifiedMaxCount"], Literal(qmax)))
+    shape = BNode()
+    g.add((shape, SH.property, exist_ps))
+    return shape
+
+
+def _emit_conformance_rule(  # noqa: PLR0913
+    model: Model,
+    g: Graph,
+    coll_node: URIRef,
+    ns_name: str,
+    gate_iris: list[str],
+    prof_iri: str,
+    rule: Conformance,
+    *,
+    is_default: bool = False,
+) -> None:
+    """Emit one conformance rule (collection-self, existential, or member-predicate)."""
+    gate = _emit_gate_not(g, prof_iri, gate_iris, require_present=is_default)
+
+    # collection-self mode: the collection, when an <applies_to>, must satisfy where.
+    if rule.applies_to:
+        target = _resolve_class_iri(model, ns_name, rule.applies_to)
+        if target is None:
+            return
+        active = _emit_where_shape(model, g, ns_name, rule.where)
+        target_node: URIRef = URIRef(target)
+    else:
+        for_each = _resolve_class_iri(model, ns_name, rule.for_each)
+        membership = _resolve_prop_iri(model, ns_name, rule.membership)
+        if for_each is None or membership is None:
+            return
+        inner = _emit_existential(model, g, ns_name, rule) if rule.exists else _emit_where_shape(model, g, ns_name, rule.where)
+        if inner is None:
+            return
+        # Per member: not a <for_each>  OR  the inner shape holds.
+        nf_cls = BNode()
+        g.add((nf_cls, SH["class"], URIRef(for_each)))  # type: ignore[arg-type]
+        not_for_each = BNode()
+        g.add((not_for_each, SH["not"], nf_cls))
+        member_or = Collection(g, None)  # type: ignore[arg-type]
+        member_or.append(not_for_each)
+        member_or.append(inner)
+        member_ps = BNode()
+        g.add((member_ps, SH.path, URIRef(membership)))  # type: ignore[arg-type]
+        g.add((member_ps, SH["or"], member_or.uri))
+        active = BNode()
+        g.add((active, SH.property, member_ps))
+        target_node = coll_node
+
+    top = Collection(g, None)  # type: ignore[arg-type]
+    top.append(gate)
+    top.append(active)
+    g.add((target_node, SH["or"], top.uri))
+
+
+def _gen_conformance(model: Model, g: Graph) -> None:
+    """Emit SHACL for structured ``## Profile conformance`` blocks (tier 4)."""
+    namespaces_with_rules = [ns for ns in model.namespaces if getattr(ns, "conformance_rules", None)]
+    if not namespaces_with_rules:
+        return
+    cfg = model.config.get("conformance", {})
+    coll_ref = cfg.get("collection-class", "/Core/ElementCollection")
+    prof_ref = cfg.get("profile-property", "/Core/profileConformance")
+    profile_map = cfg.get("profile", {}) or {}
+
+    coll_iri = _resolve_class_iri(model, "", coll_ref)
+    prof_iri = _resolve_prop_iri(model, "", prof_ref)
+    prof_prop = model.properties.get(prof_ref)
+    if coll_iri is None or prof_iri is None or prof_prop is None:
+        logger.warning("conformance: cannot resolve collection-class %r or profile-property %r", coll_ref, prof_ref)
+        return
+    rng = prof_prop.metadata.get("range", "")
+    gate_vocab = model.vocabularies.get(rng if rng.startswith("/") else f"/{prof_prop.ns.name}/{rng}")
+    if gate_vocab is None:
+        logger.warning("conformance: profile-property %s has no vocabulary range", prof_ref)
+        return
+
+    default_profile = cfg.get("default-profile")
+    default_iri = f"{gate_vocab.iri}/{default_profile}" if default_profile else None
+
+    coll_node = URIRef(coll_iri)
+    for ns in namespaces_with_rules:
+        entries = profile_map.get(ns.name)
+        if entries is None:
+            logger.warning("conformance: namespace %s has rules but no conformance.profile mapping", ns.name)
+            continue
+        gate_iris = [f"{gate_vocab.iri}/{e}" for e in ([entries] if isinstance(entries, str) else entries)]
+        # When the rule gates on the default profile, an omitted profileConformance still applies.
+        is_default = default_iri is not None and default_iri in gate_iris
+        for rule in ns.conformance_rules:
+            _emit_conformance_rule(model, g, coll_node, ns.name, gate_iris, prof_iri, rule, is_default=is_default)
 
 
 def _gen_properties(model: Model, g: Graph) -> None:
