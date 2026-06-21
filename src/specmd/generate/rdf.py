@@ -497,7 +497,7 @@ def _emit_property_constraints(model: Model, g: Graph, c_node: URIRef, prop: Pro
 
     Only path-bearing constraints (``type`` / ``not type`` / ``matches``) are valid
     on a property. The property name is prepended as the first hop so the SHACL
-    targets the property's value (e.g. ``customIdToLicense -> elementValue``) —
+    targets the property's value (e.g. ``customIdToLicense -> elementValue``) --
     unless the author already wrote the property as an explicit first hop. Each
     ``(class node, scoped AST)`` is emitted at most once.
     """
@@ -752,7 +752,7 @@ def _gen_class_constraints(model: Model, g: Graph, seen: set[tuple[str, object]]
     """Emit SHACL for class-level constraints declared in ``## Constraints`` sections.
 
     *seen* (shared with the property-constraint pass) skips a constraint already
-    emitted on the same class node — e.g. a class restating a property's own rule.
+    emitted on the same class node -- e.g. a class restating a property's own rule.
     """
     for c in model.classes.values():
         constraints = getattr(c, "constraints", None)
@@ -860,7 +860,7 @@ def _emit_gate_not(g: Graph, prof_iri: str, gate_iris: list[str], *, require_pre
 
     When *require_present* is true (the rule's profile is the **default**, so an
     omitted ``profileConformance`` is treated as that profile), the shape also
-    requires the property to be present — so an omitted value is *not* treated as
+    requires the property to be present -- so an omitted value is *not* treated as
     inactive, and the rule still applies.
     """
     if len(gate_iris) == 1:

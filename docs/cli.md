@@ -1,5 +1,5 @@
 ---
-SPDX-FileCopyrightText: 2026 Arthit Suriyawongkul
+SPDX-FileCopyrightText: 2026-present Arthit Suriyawongkul
 SPDX-FileType: DOCUMENTATION
 SPDX-License-Identifier: CC0-1.0
 ---
@@ -48,11 +48,11 @@ specmd validate --strict path/to/model
 
 The validator runs two passes on a directory:
 
-1. **Raw YAML check** — each `## Entries` and `## Properties` section is
+1. **Raw YAML check** -- each `## Entries` and `## Properties` section is
    parsed with `yaml.safe_load` to catch characters and constructs
    that cause parse errors in strict YAML consumers (e.g. a value
    starting with `[` or `{`, or a bare `:` inside a plain scalar).
-2. **Full model parse** — the complete model is loaded and cross-referenced,
+2. **Full model parse** -- the complete model is loaded and cross-referenced,
    reporting semantic errors (unknown classes, missing metadata, etc.).
 
 A summary line is always printed: `N file(s) checked, M file(s) with issues.`

@@ -19,13 +19,13 @@ Key points:
 
 - Vocab/relationship defaults (`default-from`, `default-to`,
   `default-relationship-class`) live under `vocabulary:`, not at the top level.
-- `ontology.license-uri` — URI of the ontology licence.
+- `ontology.license-uri` -- URI of the ontology licence.
   Distinct from top-level `license`, which is an SPDX identifier string.
 
 Internal variable convention:
 
-- `cfg_*` prefix — scalar config value (`str | None`).
-- `*_cfg` suffix — config sub-block (`dict`).
+- `cfg_*` prefix -- scalar config value (`str | None`).
+- `*_cfg` suffix -- config sub-block (`dict`).
 
 Canonical reference: `docs/specmd.yml.example`.
 
@@ -35,13 +35,13 @@ Four subcommands: `generate` (alias `gen`), `validate`, `migrate`, `export`.
 
 **`validate`** accepts a model directory OR a single `.md` file.
 
-- Directory: two passes — (1) raw YAML check (`yaml.safe_load` on `## Entries`
+- Directory: two passes -- (1) raw YAML check (`yaml.safe_load` on `## Entries`
   and `## Properties` sections), then (2) full `Model` load.
 - Single file: raw YAML check only (no `Model` loading).
 - `--strict`: exit non-zero if raw YAML issues found (default: warn only).
 - Always prints a summary line: `N file(s) checked, M file(s) with issues.`
 - Raw YAML check logic lives in `src/specmd/commands/validate.py`.
-  `Format` sections are excluded — they use specmd backtick syntax
+  `Format` sections are excluded -- they use specmd backtick syntax
   (`- pattern: \`regex\``) which is not raw YAML.
 
 **`migrate`** also validates its own output after generating it (`_warn_invalid_entries_yaml`).
@@ -109,7 +109,7 @@ Line length: max 88, target 80.
 
 ## File headers
 
-All source files — SPDX tags, alphabetical order:
+All source files -- SPDX tags, alphabetical order:
 
 ```text
 SPDX-FileCopyrightText: <year> <name>

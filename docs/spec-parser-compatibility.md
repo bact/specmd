@@ -1,5 +1,5 @@
 ---
-SPDX-FileCopyrightText: 2026 Arthit Suriyawongkul
+SPDX-FileCopyrightText: 2026-present Arthit Suriyawongkul
 SPDX-FileType: DOCUMENTATION
 SPDX-License-Identifier: CC0-1.0
 ---
@@ -23,7 +23,7 @@ SpecMD accepts the original Markdown format as input via automatic migration.
 Simply replace `python spec-parser/main.py` with `python specmd/main.py`.
 
 In a GitHub workflow that checks out the repository, only the repository name
-needs to change — the checkout path, the pip install command, and every
+needs to change -- the checkout path, the pip install command, and every
 `main.py` option stay the same:
 
 ```yaml

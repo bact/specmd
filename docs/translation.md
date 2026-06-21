@@ -1,6 +1,6 @@
 ---
 SPDX-FileCopyrightText: 2024-2025 SPDX Project
-SPDX-FileCopyrightText: 2026 Arthit Suriyawongkul
+SPDX-FileCopyrightText: 2026-present Arthit Suriyawongkul
 SPDX-FileType: DOCUMENTATION
 SPDX-License-Identifier: Community-Spec-1.0
 ---

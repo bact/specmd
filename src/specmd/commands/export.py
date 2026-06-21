@@ -39,7 +39,7 @@ RE_DEPRECATED_NOTICE = re.compile(
     r"^\*\*DEPRECATED(?:\s+in\s+(?:SPDX\s+)?([\d.]+(?:\.\d+)*))?\.\*\*\s*$",
     re.IGNORECASE,
 )
-# Matches "- name:" with no inline value — used for both nested property tops and rich vocab entries.
+# Matches "- name:" with no inline value -- used for both nested property tops and rich vocab entries.
 RE_ITEM_HEADER = re.compile(r"^(-\s+)([\w/]+):\s*$")
 RE_ENTRY_DESC = re.compile(r"^  -\s+description:\s+(.+)$")  # "  - description: ..." sub-key
 

@@ -488,7 +488,7 @@ class TestVocabSpecialCharDescriptions:
         assert s.entries["sha256"]["description"] == "SHA-256 as defined in NIST FIPS 180-4: Secure Hash Standard."
 
     def test_multiple_special_chars_in_same_section(self) -> None:
-        # Mixed entries: plain, markdown-link, colon, and curly-brace — all in one block.
+        # Mixed entries: plain, markdown-link, colon, and curly-brace -- all in one block.
         content = dedent("""\
             - md5: MD5 hash algorithm.
             - blake3: [BLAKE3](https://github.com/BLAKE3-team/BLAKE3) hash algorithm.
@@ -525,7 +525,7 @@ class TestVocabSpecialCharDescriptions:
 
     def test_block_scalar_no_strip_keeps_trailing_newline(self) -> None:
         # > (no strip) keeps the trailing newline.  VocabularySection stores it
-        # verbatim — callers that care should use >- in source files.
+        # verbatim -- callers that care should use >- in source files.
         content = "- sha256: >\n    SHA-256 hash.\n"
         s = VocabularySection(content)
         assert str(s.entries["sha256"]["description"]).endswith("\n")
