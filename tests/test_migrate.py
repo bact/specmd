@@ -98,22 +98,16 @@ class TestMigrateVocabEntries:
         assert fields["from"] == ["/Security/Vulnerability"]
 
     def test_qualified_to_name_in_or_list(self) -> None:
-        fields = _extract_rel_entry_fields(
-            "The `from` Element conforms to each `to` /FunctionalSafety/Assumption or Specification."
-        )
+        fields = _extract_rel_entry_fields("The `from` Element conforms to each `to` /FunctionalSafety/Assumption or Specification.")
         assert fields["to"] == ["/FunctionalSafety/Assumption", "Specification"]
 
     def test_mixed_qualified_and_bare_oxford_list(self) -> None:
-        fields = _extract_rel_entry_fields(
-            "The `from` /Security/Vulnerability, Action, or DefinedProcess affects each `to` Element."
-        )
+        fields = _extract_rel_entry_fields("The `from` /Security/Vulnerability, Action, or DefinedProcess affects each `to` Element.")
         assert fields["from"] == ["/Security/Vulnerability", "Action", "DefinedProcess"]
 
     def test_from_list_stops_at_verb(self) -> None:
         # Names after the verb (e.g. an object noun) must not be swept into the list.
-        fields = _extract_rel_entry_fields(
-            "The `from` Agent is delegating an action to the Agent of the `to` Relationship."
-        )
+        fields = _extract_rel_entry_fields("The `from` Agent is delegating an action to the Agent of the `to` Relationship.")
         assert fields["from"] == ["Agent"]
         assert fields["to"] == ["Relationship"]
 
