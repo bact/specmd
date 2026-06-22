@@ -10,7 +10,7 @@ from pathlib import Path
 
 import yaml
 
-from specmd.commands.migrate import _migrate_lines, migrate_file
+from specmd.commands.migrate import _extract_rel_entry_fields, _migrate_lines, migrate_file
 
 
 def _migrate(src: str) -> str:
@@ -79,6 +79,70 @@ class TestMigrateVocabEntries:
         out = _migrate(src)
         assert "  - relationshipClass: LifecycleRelationship" in out
         _assert_entries_yaml_valid(out)
+
+    def test_qualified_relationship_class_extracted(self) -> None:
+        # A cross-namespace ``constrained to`/NS/Name`` `` must keep the qualifier.
+        fields = _extract_rel_entry_fields(
+            "The `from` /Security/Vulnerability is investigated for each `to` Element. "
+            "Constrained to `/Security/VexUnderInvestigationVulnAssessmentRelationship` classed relationships."
+        )
+        assert fields["relationshipClass"] == "/Security/VexUnderInvestigationVulnAssessmentRelationship"
+
+    def test_from_to_backticks_are_optional(self) -> None:
+        # Whether or not class names are wrapped in backticks, capture must match.
+        plain = _extract_rel_entry_fields("The `from` Agent affects each `to` Artifact.")
+        ticked = _extract_rel_entry_fields("The `from` `Agent` affects each `to` `Artifact`.")
+        assert plain == ticked == {"from": ["Agent"], "to": ["Artifact"]}
+
+    def test_from_backticked_qualified_name(self) -> None:
+        fields = _extract_rel_entry_fields("The `from` `/Security/Vulnerability` affects each `to` Element.")
+        assert fields["from"] == ["/Security/Vulnerability"]
+
+    def test_to_backticks_optional_in_or_list(self) -> None:
+        # A mix of backticked and bare names within one or-list is allowed.
+        fields = _extract_rel_entry_fields("The `from` Element relates to each `to` `Agent`, Artifact, or `Location`.")
+        assert fields["to"] == ["Agent", "Artifact", "Location"]
+
+    def test_relationship_class_backticks_optional(self) -> None:
+        ticked = _extract_rel_entry_fields("The `from` Agent has `to` Artifact. Constrained to `RoleRelationship`.")
+        plain = _extract_rel_entry_fields("The `from` Agent has `to` Artifact. Constrained to RoleRelationship.")
+        assert ticked["relationshipClass"] == plain["relationshipClass"] == "RoleRelationship"
+
+    def test_relationship_class_no_false_positive_on_lowercase(self) -> None:
+        # Without backticks, a lowercase word after the keyword must not be captured.
+        fields = _extract_rel_entry_fields("The `from` Agent has `to` Artifact. Constrained to the proper relationship.")
+        assert "relationshipClass" not in fields
+
+    def test_from_list_oxford_and_non_oxford_comma_equivalent(self) -> None:
+        non_oxford = _extract_rel_entry_fields("The `from` Agent, Action or DefinedProcess does each `to` Element.")
+        oxford = _extract_rel_entry_fields("The `from` Agent, Action, or DefinedProcess does each `to` Element.")
+        assert non_oxford["from"] == ["Agent", "Action", "DefinedProcess"]
+        assert oxford["from"] == ["Agent", "Action", "DefinedProcess"]
+
+    def test_to_list_oxford_and_non_oxford_comma_equivalent(self) -> None:
+        non_oxford = _extract_rel_entry_fields("The `from` Element relates to each `to` Agent, Artifact or Location.")
+        oxford = _extract_rel_entry_fields("The `from` Element relates to each `to` Agent, Artifact, or Location.")
+        assert non_oxford["to"] == ["Agent", "Artifact", "Location"]
+        assert oxford["to"] == ["Agent", "Artifact", "Location"]
+
+    def test_qualified_from_name_extracted(self) -> None:
+        # A fully-qualified ``/NS/Name`` right after `from` must still parse.
+        fields = _extract_rel_entry_fields("The `from` /Security/Vulnerability affects each `to` Element.")
+        assert fields["from"] == ["/Security/Vulnerability"]
+
+    def test_qualified_to_name_in_or_list(self) -> None:
+        fields = _extract_rel_entry_fields("The `from` Element conforms to each `to` /FunctionalSafety/Assumption or Specification.")
+        assert fields["to"] == ["/FunctionalSafety/Assumption", "Specification"]
+
+    def test_mixed_qualified_and_bare_oxford_list(self) -> None:
+        fields = _extract_rel_entry_fields("The `from` /Security/Vulnerability, Action, or DefinedProcess affects each `to` Element.")
+        assert fields["from"] == ["/Security/Vulnerability", "Action", "DefinedProcess"]
+
+    def test_from_list_stops_at_verb(self) -> None:
+        # Names after the verb (e.g. an object noun) must not be swept into the list.
+        fields = _extract_rel_entry_fields("The `from` Agent is delegating an action to the Agent of the `to` Relationship.")
+        assert fields["from"] == ["Agent"]
+        assert fields["to"] == ["Relationship"]
 
     def test_migrated_output_parseable_as_yaml_block_list(self) -> None:
         """Block-list output must be valid YAML that the parser accepts."""
