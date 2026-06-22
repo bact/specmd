@@ -80,6 +80,41 @@ class TestMigrateVocabEntries:
         assert "  - relationshipClass: LifecycleRelationship" in out
         _assert_entries_yaml_valid(out)
 
+    def test_qualified_relationship_class_extracted(self) -> None:
+        # A cross-namespace ``constrained to`/NS/Name`` `` must keep the qualifier.
+        fields = _extract_rel_entry_fields(
+            "The `from` /Security/Vulnerability is investigated for each `to` Element. "
+            "Constrained to `/Security/VexUnderInvestigationVulnAssessmentRelationship` classed relationships."
+        )
+        assert fields["relationshipClass"] == "/Security/VexUnderInvestigationVulnAssessmentRelationship"
+
+    def test_from_to_backticks_are_optional(self) -> None:
+        # Whether or not class names are wrapped in backticks, capture must match.
+        plain = _extract_rel_entry_fields("The `from` Agent affects each `to` Artifact.")
+        ticked = _extract_rel_entry_fields("The `from` `Agent` affects each `to` `Artifact`.")
+        assert plain == ticked == {"from": ["Agent"], "to": ["Artifact"]}
+
+    def test_from_backticked_qualified_name(self) -> None:
+        fields = _extract_rel_entry_fields("The `from` `/Security/Vulnerability` affects each `to` Element.")
+        assert fields["from"] == ["/Security/Vulnerability"]
+
+    def test_to_backticks_optional_in_or_list(self) -> None:
+        # A mix of backticked and bare names within one or-list is allowed.
+        fields = _extract_rel_entry_fields(
+            "The `from` Element relates to each `to` `Agent`, Artifact, or `Location`."
+        )
+        assert fields["to"] == ["Agent", "Artifact", "Location"]
+
+    def test_relationship_class_backticks_optional(self) -> None:
+        ticked = _extract_rel_entry_fields("The `from` Agent has `to` Artifact. Constrained to `RoleRelationship`.")
+        plain = _extract_rel_entry_fields("The `from` Agent has `to` Artifact. Constrained to RoleRelationship.")
+        assert ticked["relationshipClass"] == plain["relationshipClass"] == "RoleRelationship"
+
+    def test_relationship_class_no_false_positive_on_lowercase(self) -> None:
+        # Without backticks, a lowercase word after the keyword must not be captured.
+        fields = _extract_rel_entry_fields("The `from` Agent has `to` Artifact. Constrained to the proper relationship.")
+        assert "relationshipClass" not in fields
+
     def test_from_list_oxford_and_non_oxford_comma_equivalent(self) -> None:
         non_oxford = _extract_rel_entry_fields("The `from` Agent, Action or DefinedProcess does each `to` Element.")
         oxford = _extract_rel_entry_fields("The `from` Agent, Action, or DefinedProcess does each `to` Element.")
