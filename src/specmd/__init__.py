@@ -3,7 +3,7 @@
 
 """specmd -- parse a specification written in Markdown and generate RDF ontology, MkDocs pages, and diagrams."""
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 from .parse.model import Model, PropertyNature
 
