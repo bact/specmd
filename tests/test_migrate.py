@@ -100,9 +100,7 @@ class TestMigrateVocabEntries:
 
     def test_to_backticks_optional_in_or_list(self) -> None:
         # A mix of backticked and bare names within one or-list is allowed.
-        fields = _extract_rel_entry_fields(
-            "The `from` Element relates to each `to` `Agent`, Artifact, or `Location`."
-        )
+        fields = _extract_rel_entry_fields("The `from` Element relates to each `to` `Agent`, Artifact, or `Location`.")
         assert fields["to"] == ["Agent", "Artifact", "Location"]
 
     def test_relationship_class_backticks_optional(self) -> None:
