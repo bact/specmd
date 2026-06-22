@@ -42,10 +42,12 @@ RE_USE_INSTEAD = re.compile(
 )
 RE_KV_LINE = re.compile(r"^(-\s+\w[\w-]*:\s+)(.+)$")
 RE_ENTRY_LINE = re.compile(r"^(-\s+)([\w/]+)(\s*:\s*)(.+)$")
-RE_HAS_FROM = re.compile(r"`from`\s+[A-Z]")
+RE_HAS_FROM = re.compile(r"`from`\s+(?:/\w+/)?[A-Z]")
 RE_FROM_TO_SPAN = re.compile(r"`from`\s+(.+?)`to`", re.IGNORECASE)
 RE_TO_AFTER = re.compile(r"`to`\s+(?:each\s+|the\s+)?(.+)", re.IGNORECASE)
 RE_PASCAL_NAME = re.compile(r"(?<![a-zA-Z])[A-Z][a-zA-Z0-9]*[a-z][a-zA-Z0-9]*")
+# A fully-qualified ``/Namespace/Name`` class reference.
+RE_QUALIFIED_NAME = re.compile(r"/\w+/[A-Z][a-zA-Z0-9]*")
 RE_POSSESSIVE_SPLIT = re.compile(r"^[A-Z]\w+\s*'s\s+(.+)")
 RE_CONSTRAINED_CLASS = re.compile(
     r"(?:constrained to|Shall be (?:a|an)|To be used with)\s+`([A-Z]\w+)`",
@@ -109,6 +111,15 @@ def _extract_deprecation(lines: list[str]) -> dict[str, str]:
 
 
 def _collect_class_names(text: str) -> list[str]:
+    """Collect a leading run of class names from *text*.
+
+    A name is bare PascalCase (``Vulnerability``) or fully qualified
+    (``/Security/Vulnerability``). The list may use commas, the conjunction
+    ``or``/``and``, or both -- so ``A, B or C`` and the Oxford ``A, B, or C``
+    are equivalent. Conjunctions are skipped; parsing stops at the first token
+    that is not a class name (typically the sentence's verb) or at a
+    sentence-ending period. Duplicates are dropped, first-seen order kept.
+    """
     seen: set[str] = set()
     names: list[str] = []
     for raw in re.split(r"[\s,]+", text.strip()):
@@ -120,7 +131,7 @@ def _collect_class_names(text: str) -> list[str]:
             continue
         if token.lower() in ("or", "and"):
             continue
-        if RE_PASCAL_NAME.fullmatch(token):
+        if RE_QUALIFIED_NAME.fullmatch(token) or RE_PASCAL_NAME.fullmatch(token):
             if token not in seen:
                 seen.add(token)
                 names.append(token)
@@ -142,10 +153,9 @@ def _extract_rel_entry_fields(desc: str) -> dict[str, object]:
         m_poss = RE_POSSESSIVE_SPLIT.match(from_text)
         if m_poss:
             from_text = m_poss.group(1)
-        names = RE_PASCAL_NAME.findall(from_text)
+        names = _collect_class_names(from_text)
         if names:
-            seen: set[str] = set()
-            result["from"] = [n for n in names if not (n in seen or seen.add(n))]  # type: ignore[func-returns-value]
+            result["from"] = names
 
     m_to = RE_TO_AFTER.search(desc)
     if m_to:

@@ -10,7 +10,7 @@ from pathlib import Path
 
 import yaml
 
-from specmd.commands.migrate import _migrate_lines, migrate_file
+from specmd.commands.migrate import _extract_rel_entry_fields, _migrate_lines, migrate_file
 
 
 def _migrate(src: str) -> str:
@@ -79,6 +79,43 @@ class TestMigrateVocabEntries:
         out = _migrate(src)
         assert "  - relationshipClass: LifecycleRelationship" in out
         _assert_entries_yaml_valid(out)
+
+    def test_from_list_oxford_and_non_oxford_comma_equivalent(self) -> None:
+        non_oxford = _extract_rel_entry_fields("The `from` Agent, Action or DefinedProcess does each `to` Element.")
+        oxford = _extract_rel_entry_fields("The `from` Agent, Action, or DefinedProcess does each `to` Element.")
+        assert non_oxford["from"] == ["Agent", "Action", "DefinedProcess"]
+        assert oxford["from"] == ["Agent", "Action", "DefinedProcess"]
+
+    def test_to_list_oxford_and_non_oxford_comma_equivalent(self) -> None:
+        non_oxford = _extract_rel_entry_fields("The `from` Element relates to each `to` Agent, Artifact or Location.")
+        oxford = _extract_rel_entry_fields("The `from` Element relates to each `to` Agent, Artifact, or Location.")
+        assert non_oxford["to"] == ["Agent", "Artifact", "Location"]
+        assert oxford["to"] == ["Agent", "Artifact", "Location"]
+
+    def test_qualified_from_name_extracted(self) -> None:
+        # A fully-qualified ``/NS/Name`` right after `from` must still parse.
+        fields = _extract_rel_entry_fields("The `from` /Security/Vulnerability affects each `to` Element.")
+        assert fields["from"] == ["/Security/Vulnerability"]
+
+    def test_qualified_to_name_in_or_list(self) -> None:
+        fields = _extract_rel_entry_fields(
+            "The `from` Element conforms to each `to` /FunctionalSafety/Assumption or Specification."
+        )
+        assert fields["to"] == ["/FunctionalSafety/Assumption", "Specification"]
+
+    def test_mixed_qualified_and_bare_oxford_list(self) -> None:
+        fields = _extract_rel_entry_fields(
+            "The `from` /Security/Vulnerability, Action, or DefinedProcess affects each `to` Element."
+        )
+        assert fields["from"] == ["/Security/Vulnerability", "Action", "DefinedProcess"]
+
+    def test_from_list_stops_at_verb(self) -> None:
+        # Names after the verb (e.g. an object noun) must not be swept into the list.
+        fields = _extract_rel_entry_fields(
+            "The `from` Agent is delegating an action to the Agent of the `to` Relationship."
+        )
+        assert fields["from"] == ["Agent"]
+        assert fields["to"] == ["Relationship"]
 
     def test_migrated_output_parseable_as_yaml_block_list(self) -> None:
         """Block-list output must be valid YAML that the parser accepts."""
