@@ -158,7 +158,7 @@ def test_autolinked_namespace_id_resolves_clean() -> None:
     # (`<https://…>`); the parsed namespace IRI must not keep the angle brackets.
     model = Model(FIXTURE)
     lite = next(ns for ns in model.namespaces if ns.name == "Lite")
-    assert lite.iri == "https://example.org/rdf/terms/Lite"
+    assert lite.iri == "https://example.org/rdf/terms/Lite/"
 
 
 class TestContextualTypeWalk:

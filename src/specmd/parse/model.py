@@ -464,7 +464,12 @@ class Namespace:
 
         assert self.name == self.metadata["name"], f"Namespace name {self.name} does not match metadata {self.metadata['name']}"
 
-        self.iri: str = self.metadata["id"]
+        # Canonicalize to a trailing slash: this is the namespace IRI that class/property/etc.
+        # IRIs are built directly against (see their `self.iri = f"{self.ns.iri}{self.name}"`),
+        # and RDF tooling only recognizes a bound prefix as covering a term IRI when the bound
+        # namespace string is itself a prefix of it -- a bare (non-slash) IRI never matches.
+        raw_id = self.metadata["id"]
+        self.iri: str = raw_id if raw_id.endswith("/") else raw_id + "/"
         self.translations: dict[str, dict[str, str]] = _load_text_translations(sf)
 
 
@@ -589,7 +594,7 @@ class Class:
                         ", ".join(sorted(self.VALID_PROP_METADATA)),
                     )
 
-        self.iri: str = f"{self.ns.iri}/{self.name}"
+        self.iri: str = f"{self.ns.iri}{self.name}"
         if self.metadata.get("subClassOf") == "none":
             del self.metadata["subClassOf"]
         for prop in self.properties:
@@ -659,7 +664,7 @@ class Property:
         else:
             self.constraints = []
 
-        self.iri: str = f"{self.ns.iri}/{self.name}"
+        self.iri: str = f"{self.ns.iri}{self.name}"
         self.used_in: list[str] = []
         self.translations: dict[str, dict[str, str]] = _load_text_translations(sf)
 
@@ -713,7 +718,7 @@ class Vocabulary:
             if p not in self.VALID_METADATA:
                 logger.error("%s: unknown metadata key %r; expected one of: %s", fname, p, ", ".join(sorted(self.VALID_METADATA)))
 
-        self.iri: str = f"{self.ns.iri}/{self.name}"
+        self.iri: str = f"{self.ns.iri}{self.name}"
 
         self.is_relationship_vocab: bool = any(
             entry.get("from") != _d.default_from
@@ -779,7 +784,7 @@ class Individual:
             if p not in self.VALID_METADATA:
                 logger.error("%s: unknown metadata key %r; expected one of: %s", fname, p, ", ".join(sorted(self.VALID_METADATA)))
 
-        self.iri: str = f"{self.ns.iri}/{self.name}"
+        self.iri: str = f"{self.ns.iri}{self.name}"
         if "iri" not in self.metadata:
             self.metadata["iri"] = self.iri
         self.translations: dict[str, dict[str, str]] = _load_text_translations(sf)
@@ -826,5 +831,5 @@ class Datatype:
             if p not in self.VALID_METADATA:
                 logger.error("%s: unknown metadata key %r; expected one of: %s", fname, p, ", ".join(sorted(self.VALID_METADATA)))
 
-        self.iri: str = f"{self.ns.iri}/{self.name}"
+        self.iri: str = f"{self.ns.iri}{self.name}"
         self.translations: dict[str, dict[str, str]] = _load_text_translations(sf)
