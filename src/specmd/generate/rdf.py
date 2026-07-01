@@ -75,6 +75,9 @@ def _resolve_ref_iri(ref: str, ns_iri: str, base_uri: str) -> str:
 
     Supports absolute IRIs (``http://…``), fully-qualified slash paths
     (``/NS/Term``), and bare local names (resolved within *ns_iri*).
+
+    *ns_iri* and *base_uri* are namespace IRIs and always carry a trailing slash
+    (see ``Namespace.iri`` / ``Model.base_uri``), so no separator is inserted here.
     """
     if ref.startswith(("http://", "https://")):
         return ref
@@ -82,7 +85,7 @@ def _resolve_ref_iri(ref: str, ns_iri: str, base_uri: str) -> str:
         parts = ref.lstrip("/").split("/", 1)
         if len(parts) == 2:
             return f"{base_uri}{parts[0]}/{parts[1]}"
-    return f"{ns_iri}/{ref}"
+    return f"{ns_iri}{ref}"
 
 
 def _emit_example(g: Graph, node: URIRef, value: str) -> None:
@@ -244,11 +247,15 @@ def gen_rdf_ontology(model: Model) -> Graph:
     # Per-namespace prefix bindings with VANN annotations.
     for ns in model.namespaces:
         prefix = ns.metadata.get("preferredNamespacePrefix") or "spdx-" + ns.name.lower()
+        # ns.iri always carries a trailing slash (Namespace.iri is canonicalized at parse
+        # time) so that it matches the term IRIs minted against it (f"{ns.iri}{name}"),
+        # letting rdflib's serializers recognize the bound prefix and reuse it -- rather
+        # than failing to match and minting their own ns1, ns2, ... for the same namespace.
         ns_iri = Namespace(ns.iri)
         g.bind(prefix, ns_iri)
         ns_node = URIRef(ns.iri)
         g.add((ns_node, VANN.preferredNamespacePrefix, Literal(prefix)))
-        g.add((ns_node, VANN.preferredNamespaceUri, Literal(str(ns_iri))))
+        g.add((ns_node, VANN.preferredNamespaceUri, Literal(ns.iri)))
         if ns.metadata.get("deprecated") == "true":
             g.add((ns_node, OWL.deprecated, Literal(True)))
             dv = ns.metadata.get("deprecatedVersion")

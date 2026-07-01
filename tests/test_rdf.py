@@ -248,7 +248,7 @@ class TestRDFPrefixes:
         assert (ont, VANN.preferredNamespaceUri, None) in rdf_graph
 
     def test_vann_prefix_on_namespace(self, rdf_graph: Graph) -> None:
-        ns = URIRef(CORE.rstrip("/"))
+        ns = URIRef(CORE)
         assert (ns, VANN.preferredNamespacePrefix, None) in rdf_graph
 
 

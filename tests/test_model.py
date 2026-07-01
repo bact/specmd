@@ -72,8 +72,10 @@ class TestModelLoading:
         assert model.classes["/Core/Tool"].iri == "https://example.org/rdf/terms/Core/Tool"
 
     def test_namespace_iri(self, model: Model) -> None:
-        # Real model stores namespace id without trailing slash (e.g. ".../Core").
-        assert model.namespaces[0].iri == "https://example.org/rdf/terms/Core"
+        # Namespace.iri is canonicalized to a trailing slash (e.g. ".../Core/"),
+        # even though the raw `id:` metadata omits it -- this is the form term
+        # IRIs are built against and that RDF tooling expects a namespace to have.
+        assert model.namespaces[0].iri == "https://example.org/rdf/terms/Core/"
 
 
 class TestInheritance:
