@@ -1,9 +1,10 @@
+# SPDX-FileContributor: Arthit Suriyawongkul
 # SPDX-FileType: SOURCE
 # SPDX-License-Identifier: Apache-2.0
 
 """specmd -- parse a specification written in Markdown and generate RDF ontology, MkDocs pages, and diagrams."""
 
-__version__ = "0.3.1"
+__version__ = "0.3.2"
 
 from .parse.model import Model, PropertyNature
 
