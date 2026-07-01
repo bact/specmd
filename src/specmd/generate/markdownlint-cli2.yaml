@@ -27,6 +27,7 @@ config:
       - style
       - summary
       - ul
+      - wbr
 
   # MD041 -- first line heading: frontmatter is not counted as content, so the first
   # heading (H1) after the YAML block satisfies this rule automatically.

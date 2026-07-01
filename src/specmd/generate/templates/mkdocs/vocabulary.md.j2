@@ -20,7 +20,7 @@
 | Name | From | To | Description | Relationship class |
 | - | - | - | - | - |
 {% for name, val in entries | dictsort %}
-|{{cell("**" ~ name ~ "**")}}|{{cell(val["from"] | join(", "))}}|{{cell(val["to"] | join(", "))}}|{{cell(val["description"] ~ example_suffix(val))}}|{{cell(val["relationshipClass"])}}|
+|{{cell("**" ~ (name | word_break) ~ "**")}}|{{cell(val["from"] | map("word_break") | join(", "))}}|{{cell(val["to"] | map("word_break") | join(", "))}}|{{cell(val["description"] ~ example_suffix(val))}}|{{cell(val["relationshipClass"] | word_break)}}|
 {% endfor %}
 {% else %}
 | Name | Description |
