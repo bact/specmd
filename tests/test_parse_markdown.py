@@ -49,8 +49,8 @@ class TestSpecFile:
         assert any("cannot parse" in msg for msg in caplog.messages)
 
     def test_loads_class_file(self, fixture_model_path: Path) -> None:
-        sf = SpecFile(fixture_model_path / "Core" / "Classes" / "Tool.md")
-        assert sf.name == "Tool"
+        sf = SpecFile(fixture_model_path / "Core" / "Classes" / "SecretAgent.md")
+        assert sf.name == "SecretAgent"
         assert "Properties" in sf.sections
         assert "Metadata" in sf.sections
 

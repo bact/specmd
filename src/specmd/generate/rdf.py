@@ -32,7 +32,7 @@ from specmd.constraints import (
     parse_constraint,
     scope_property_path,
 )
-from specmd.parse.model import PropertyNature
+from specmd.parse.model import PropertyNature, parse_qualified_class  # reuse the single qualifier-syntax parser
 
 if TYPE_CHECKING:
     from rdflib.term import Node
@@ -777,28 +777,164 @@ def _gen_class_constraints(model: Model, g: Graph, seen: set[tuple[str, object]]
             _emit_constraint(_EmitCtx(model, g, c.ns.name), c_node, ast, start_cls=c.fqname)
 
 
-def _endpoint_class_iris(model: Model, ns_name: str, class_names: list[str]) -> tuple[list[str], list[str]]:
-    """Resolve relationship endpoint classes to ``(positives, negatives)`` IRIs.
+class _EndpointClass(NamedTuple):
+    """One resolved ``from``/``to`` endpoint class option.
 
-    Each item may carry a per-item ``not``. A bracket qualifier
-    (``Relationship[relationshipType=…]``) is reduced to its base class. The
-    universal ``Element`` root is dropped (it is already the range of
-    ``from``/``to``).
+    ``fq`` is kept alongside ``iri`` because qualifier properties (e.g. ``relationshipType``
+    on a ``Relationship`` endpoint) are resolved contextually, rooted at this class.
     """
-    pos: list[str] = []
-    neg: list[str] = []
+
+    iri: str
+    fq: str
+    qualifiers: dict[str, list[str]]
+
+
+def _is_ancestor(model: Model, ancestor_fq: str, descendant_fq: str) -> bool:
+    """Whether *ancestor_fq* is a (transitive, proper) superclass of *descendant_fq*."""
+    descendant = model.classes.get(descendant_fq)
+    return descendant is not None and ancestor_fq in descendant.inheritance_stack
+
+
+def _warn_endpoint_subsumptions(class_names: list[str], items: list[_EndpointClass], model: Model, polarity: str) -> None:
+    """Warn about every ancestor/descendant pair within *items* (one polarity group: all
+    positive, or all negative, from the same ``from``/``to`` list).
+
+    SHACL's ``sh:class`` follows ``rdfs:subClassOf*`` in the data graph, so within a single
+    polarity group an ancestor class already matches everything a listed descendant would:
+
+    - Among **positives** (``sh:or``), the ancestor branch alone matches every instance the
+      descendant branch would, making the descendant redundant -- and, worse, making any
+      qualifier on the descendant vacuous, since an instance can satisfy the ``sh:or`` via the
+      unqualified ancestor branch without ever being checked against the qualifier.
+    - Among **negatives** (``sh:not`` conjuncts), excluding the ancestor already excludes every
+      instance the descendant exclusion would, making the descendant's ``sh:not`` redundant.
+
+    Nothing is dropped (removing a branch could discard a qualifier the author still wants
+    enforced on that specific class), only warned about.
+    """
+    for a in items:
+        for b in items:
+            if a.fq == b.fq or not _is_ancestor(model, a.fq, b.fq):
+                continue
+            note = ""
+            if b.qualifiers:
+                note = " Its qualifier has no effect: any instance can satisfy the OR via the unqualified superclass branch instead."
+            logger.warning(
+                "Relationship endpoint %s list %r: %r is a superclass of %r, so listing both is redundant "
+                "(%r already matches everything %r would).%s",
+                polarity,
+                class_names,
+                a.fq,
+                b.fq,
+                a.fq,
+                b.fq,
+                note,
+            )
+
+
+def _endpoint_class_iris(model: Model, ns_name: str, class_names: list[str]) -> tuple[list[_EndpointClass], list[_EndpointClass]]:
+    """Resolve relationship endpoint classes to ``(positives, negatives)`` endpoint options.
+
+    Each item may carry a per-item ``not`` and a bracket qualifier
+    (``Relationship[relationshipType=invokedBy]``). The qualifier constrains a property of the
+    endpoint instance itself and is enforced via a nested ``sh:property`` shape (see
+    :func:`_emit_qualifier_shapes`) rather than discarded.
+
+    The universal ``Element`` root is dropped only when it is the *sole* item in the list --
+    it is already the range of ``from``/``to``, so on its own it adds no constraint. Any other
+    ancestor/descendant pair within the same list (e.g. ``/Software/Package`` alongside its
+    subclass ``/AI/AIPackage``) is kept -- dropping either could discard a real per-branch
+    qualifier -- but flagged via :func:`_warn_endpoint_subsumptions`, using the model's actual
+    class hierarchy rather than special-casing ``Element``.
+    """
+    pos: list[_EndpointClass] = []
+    neg: list[_EndpointClass] = []
     for cn in class_names:
         raw = str(cn).strip()
         negated = raw.startswith("not ")
         if negated:
             raw = raw[4:].strip()
-        base = raw.split("[", 1)[0].strip()
-        if not base or base == "Element":
+        base, qualifiers = parse_qualified_class(raw)
+        if not base:
+            continue
+        if base == "Element" and len(class_names) == 1:
             continue
         iri = _resolve_class_iri(model, ns_name, base)
         if iri:
-            (neg if negated else pos).append(iri)
+            (neg if negated else pos).append(_EndpointClass(iri, _class_fq(ns_name, base), qualifiers))
+    _warn_endpoint_subsumptions(class_names, pos, model, "positive")
+    _warn_endpoint_subsumptions(class_names, neg, model, "negative")
     return pos, neg
+
+
+def _emit_qualifier_shapes(ctx: _EmitCtx, cls_fq: str, qualifiers: dict[str, list[str]]) -> list[BNode]:
+    """Build one ``sh:property`` shape per qualifier (``propName`` restricted to its values),
+    rooted at *cls_fq* -- the endpoint's own class, since a qualifier constrains a property of
+    the endpoint instance itself (e.g. a ``Relationship``'s own ``relationshipType``).
+    """
+    shapes: list[BNode] = []
+    for prop_name, values in qualifiers.items():
+        if not values:
+            # `Foo[prop]` or `Foo[prop=]` (no "=value"): parse_qualified_class yields an empty
+            # value list. There's nothing to constrain the property to, so skip it -- building a
+            # shape here would emit an unsatisfiable `sh:in ()`, silently invalidating the branch.
+            logger.warning("Qualifier %r on class %s has no value(s); skipping", prop_name, cls_fq)
+            continue
+        hop_iris, prop_fq = _walk_path(ctx.model, ctx.ns_name, (prop_name,), cls_fq)
+        if hop_iris is None:
+            logger.warning("Qualifier %r on class %s: cannot resolve property", prop_name, cls_fq)
+            continue
+        value_iris = [_resolve_value_iri(ctx.model, prop_fq, v) for v in values]
+        if any(vi is None for vi in value_iris):
+            continue
+        pshape = BNode()
+        ctx.g.add((pshape, SH.path, URIRef(hop_iris[0])))
+        if len(value_iris) == 1:
+            ctx.g.add((pshape, SH["hasValue"], URIRef(value_iris[0])))  # type: ignore[arg-type]
+        else:
+            lst = Collection(ctx.g, None)  # type: ignore[arg-type]
+            for vi in value_iris:
+                lst.append(URIRef(vi))  # type: ignore[arg-type]
+            ctx.g.add((pshape, SH["in"], lst.uri))
+        shapes.append(pshape)
+    return shapes
+
+
+def _emit_endpoint_class_choice(ctx: _EmitCtx, node: BNode, items: list[_EndpointClass]) -> None:
+    """Restrict *node* to the given endpoint class option(s), applying each option's own
+    qualifier constraints (if any) only to its own branch.
+
+    A single option's ``sh:class`` (and qualifier shapes) attach directly to *node*; multiple
+    options become an ``sh:or`` of per-option shapes, so e.g. an unqualified option in the same
+    list is not accidentally restricted by another option's qualifier.
+    """
+    if len(items) == 1:
+        item = items[0]
+        ctx.g.add((node, SH["class"], URIRef(item.iri)))
+        for qshape in _emit_qualifier_shapes(ctx, item.fq, item.qualifiers):
+            ctx.g.add((node, SH.property, qshape))
+    else:
+        or_list = Collection(ctx.g, None)  # type: ignore[arg-type]
+        for item in items:
+            cnode = BNode()
+            ctx.g.add((cnode, SH["class"], URIRef(item.iri)))
+            for qshape in _emit_qualifier_shapes(ctx, item.fq, item.qualifiers):
+                ctx.g.add((cnode, SH.property, qshape))
+            or_list.append(cnode)
+        ctx.g.add((node, SH["or"], or_list.uri))
+
+
+def _emit_endpoint_pos_neg(ctx: _EmitCtx, pshape: BNode, pos_items: list[_EndpointClass], neg_items: list[_EndpointClass]) -> None:
+    """Put positive endpoint options on *pshape* (``sh:class``/``sh:or``, with qualifiers);
+    each negative option as ``sh:not [ sh:class + qualifier shapes ]``."""
+    if pos_items:
+        _emit_endpoint_class_choice(ctx, pshape, pos_items)
+    for item in neg_items:
+        not_node = BNode()
+        ctx.g.add((not_node, SH["class"], URIRef(item.iri)))
+        for qshape in _emit_qualifier_shapes(ctx, item.fq, item.qualifiers):
+            ctx.g.add((not_node, SH.property, qshape))
+        ctx.g.add((pshape, SH["not"], not_node))
 
 
 def _emit_endpoint(model: Model, g: Graph, parent: BNode, ns_name: str, side: tuple[str, list[str]]) -> bool:
@@ -813,7 +949,7 @@ def _emit_endpoint(model: Model, g: Graph, parent: BNode, ns_name: str, side: tu
     pshape = BNode()
     g.add((parent, SH.property, pshape))
     g.add((pshape, SH.path, URIRef(prop_iri)))
-    _emit_pos_neg(g, pshape, pos, neg)
+    _emit_endpoint_pos_neg(_EmitCtx(model, g, ns_name), pshape, pos, neg)
     return True
 
 

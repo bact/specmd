@@ -12,7 +12,7 @@ import pytest
 from rdflib import Graph, URIRef
 from rdflib.namespace import OWL, RDF, RDFS, SH, SKOS, VANN
 
-from specmd.generate.rdf import gen_rdf, gen_rdf_ontology
+from specmd.generate.rdf import _EmitCtx, _emit_qualifier_shapes, _endpoint_class_iris, gen_rdf, gen_rdf_ontology
 from specmd.parse.model import Model
 
 BASE = "https://example.org/rdf/terms/"
@@ -214,7 +214,7 @@ class TestJSONLDContext:
 
     def test_class_object_property_uses_at_id_not_at_vocab(self, ctx: dict) -> None:
         """Object properties whose range is a class use @type: @id, not @vocab (PR #205)."""
-        # No class object property in fixture since Tool→Agent uses SupportType vocab.
+        # No class object property in fixture since SecretAgent→Agent uses SupportType vocab.
         # Test indirectly: confirm no entry with @type: @vocab and missing @context.
         for key, val in ctx["@context"].items():
             if isinstance(val, dict) and val.get("@type") == "@vocab":
@@ -399,7 +399,7 @@ class TestPathTypeConstraint:
         for or_list in rdf_graph.objects(found, SH["or"]):
             for branch in RDFList(rdf_graph, or_list):
                 allowed |= set(rdf_graph.objects(branch, SH["class"]))
-        assert URIRef(CORE + "Tool") in allowed
+        assert URIRef(CORE + "SecretAgent") in allowed
         assert URIRef(CORE + "ElementMap") in allowed
 
 
@@ -565,9 +565,9 @@ class TestRelationshipConstraints:
         from rdflib.collection import Collection as RDFList
 
         rel = URIRef(CORE + "Relationship")
-        rtype = URIRef(CORE + "RelationshipType/toolUsedBy")
+        rtype = URIRef(CORE + "RelationshipType/secretAgentUsedBy")
 
-        # Find the sh:or whose negated branch keys off relationshipType = toolUsedBy.
+        # Find the sh:or whose negated branch keys off relationshipType = secretAgentUsedBy.
         target = None
         for or_list in rdf_graph.objects(rel, SH["or"]):
             branches = list(RDFList(rdf_graph, or_list))
@@ -579,9 +579,9 @@ class TestRelationshipConstraints:
             )
             if keys_off:
                 target = branches
-        assert target is not None, "no relationship constraint scoped to toolUsedBy"
+        assert target is not None, "no relationship constraint scoped to secretAgentUsedBy"
 
-        # The consequent branch must require from -> Tool, to -> Agent, and to NOT Collection.
+        # The consequent branch must require from -> SecretAgent, to -> Agent, and to NOT Collection.
         endpoints = {}
         to_neg = set()
         for b in target:
@@ -593,6 +593,79 @@ class TestRelationshipConstraints:
                 if URIRef(CORE + "to") in paths:
                     endpoints["to"] = classes
                     to_neg = {cl for n in rdf_graph.objects(ps, SH["not"]) for cl in rdf_graph.objects(n, SH["class"])}
-        assert endpoints.get("from") == {URIRef(CORE + "Tool")}
+        assert endpoints.get("from") == {URIRef(CORE + "SecretAgent")}
         assert endpoints.get("to") == {URIRef(CORE + "Agent")}
         assert to_neg == {URIRef(CORE + "Collection")}
+
+    def test_bracket_qualifier_is_enforced_not_dropped(self, model: Model) -> None:
+        # `Relationship[relationshipType=invokedBy]` must constrain the endpoint's own
+        # relationshipType, not just reduce to a bare `sh:class Relationship`.
+        pos, _neg = _endpoint_class_iris(model, "Core", ["Relationship[relationshipType=invokedBy]"])
+        assert len(pos) == 1
+        assert pos[0].iri == CORE + "Relationship"
+        assert pos[0].qualifiers == {"relationshipType": ["invokedBy"]}
+
+        g = Graph()
+        ctx = _EmitCtx(model, g, "Core")
+        shapes = _emit_qualifier_shapes(ctx, pos[0].fq, pos[0].qualifiers)
+        assert len(shapes) == 1
+        (shape,) = shapes
+        assert (shape, SH.path, URIRef(CORE + "relationshipType")) in g
+        assert (shape, SH["hasValue"], URIRef(CORE + "RelationshipType/invokedBy")) in g
+
+    def test_bracket_qualifier_with_no_value_is_skipped_not_unsatisfiable(self, model: Model, caplog: pytest.LogCaptureFixture) -> None:
+        # `Relationship[relationshipType]` (no "=value") parses to an empty value list. Building
+        # a shape from it would emit an unsatisfiable `sh:in ()`, silently invalidating the whole
+        # branch -- it must be skipped (with a warning) instead.
+        pos, _neg = _endpoint_class_iris(model, "Core", ["Relationship[relationshipType]"])
+        g = Graph()
+        ctx = _EmitCtx(model, g, "Core")
+        with caplog.at_level("WARNING"):
+            shapes = _emit_qualifier_shapes(ctx, pos[0].fq, pos[0].qualifiers)
+        assert shapes == []
+        assert any("no value" in r.message for r in caplog.records)
+
+    def test_bracket_qualifier_multi_value_uses_sh_in(self, model: Model) -> None:
+        pos, _neg = _endpoint_class_iris(model, "Core", ["Relationship[relationshipType=invokedBy,affects]"])
+        g = Graph()
+        ctx = _EmitCtx(model, g, "Core")
+        (shape,) = _emit_qualifier_shapes(ctx, pos[0].fq, pos[0].qualifiers)
+        (in_list,) = list(g.objects(shape, SH["in"]))
+        from rdflib.collection import Collection as RDFList
+
+        values = set(RDFList(g, in_list))
+        assert values == {URIRef(CORE + "RelationshipType/invokedBy"), URIRef(CORE + "RelationshipType/affects")}
+
+    def test_element_kept_when_not_sole_endpoint_item(self, model: Model, caplog: pytest.LogCaptureFixture) -> None:
+        # A single-item ["Element"] list is still dropped (it's the universal default, a no-op).
+        pos_alone, _ = _endpoint_class_iris(model, "Core", ["Element"])
+        assert pos_alone == []
+
+        # But Element listed alongside another class must NOT be silently dropped -- doing so
+        # would flip "no restriction" into an unintended restriction to just the other class.
+        with caplog.at_level("WARNING"):
+            pos_mixed, _ = _endpoint_class_iris(model, "Core", ["Element", "Agent"])
+        assert {item.iri for item in pos_mixed} == {CORE + "Element", CORE + "Agent"}
+        assert any("superclass" in r.message for r in caplog.records)
+
+    def test_subsumption_warning_uses_class_hierarchy_not_just_element(self, model: Model, caplog: pytest.LogCaptureFixture) -> None:
+        # SecretAgent subClassOf Agent in the fixture model (a fictional, test-only class --
+        # not part of the real SPDX 3 model): any ancestor/descendant pair should be flagged,
+        # not only the special-cased universal root ("Element").
+        with caplog.at_level("WARNING"):
+            pos, _ = _endpoint_class_iris(model, "Core", ["Agent", "SecretAgent"])
+        assert {item.iri for item in pos} == {CORE + "Agent", CORE + "SecretAgent"}
+        assert any("/Core/Agent' is a superclass of '/Core/SecretAgent'" in r.message for r in caplog.records)
+
+        # Unrelated classes (no ancestor/descendant relationship) must not warn.
+        caplog.clear()
+        with caplog.at_level("WARNING"):
+            _endpoint_class_iris(model, "Core", ["Agent", "Collection"])
+        assert not caplog.records
+
+        # A qualifier on the subsumed (more specific) class is flagged as vacuous, since an
+        # instance can satisfy the sh:or via the unqualified superclass branch instead.
+        caplog.clear()
+        with caplog.at_level("WARNING"):
+            _endpoint_class_iris(model, "Core", ["Agent", "SecretAgent[toolVersion=1.0]"])
+        assert any("qualifier has no effect" in r.message for r in caplog.records)

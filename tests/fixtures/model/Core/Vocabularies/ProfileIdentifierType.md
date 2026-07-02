@@ -6,7 +6,7 @@ SPDX-License-Identifier: CC0-1.0
 
 ## Summary
 
-The set of SPDX profiles.
+The set of profile identifiers.
 
 ## Description
 
