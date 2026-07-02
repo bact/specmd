@@ -150,28 +150,31 @@ each model file shall adhere to specific formatting guidelines:
 
 ### Model file example
 
-This example shows a `Tool` class with one property.
+This example shows a `SecretAgent` class with one property. `SecretAgent` is a
+fictional class, invented purely to illustrate the file format -- it is not
+part of the real SPDX 3 model.
 Its name and location in the repository would be
-`model/Core/Classes/Tool.md`.
+`model/Core/Classes/SecretAgent.md`.
 
 ```markdown
 ---
 SPDX-License-Identifier: Apache-2.0
 ---
 
-# Tool
+# SecretAgent
 
 ## Summary
 
-A software tool.
+A fictional secret-agent class, used only to illustrate the file format.
 
 ## Description
 
-A Tool is a piece of software used to produce or analyse an artefact.
+SecretAgent is not part of the real SPDX 3 model; it exists purely to
+demonstrate the class file structure, including subclassing.
 
 ## Metadata
 
-- name: Tool
+- name: SecretAgent
 - subClassOf: /Core/Agent
 
 ## Properties
@@ -185,9 +188,9 @@ will give this RDF graph
 (in [Turtle syntax](https://en.wikipedia.org/wiki/Turtle_(syntax))):
 
 ```ttl
-<https://example.org/rdf/terms/Core/Tool> a owl:Class,
+<https://example.org/rdf/terms/Core/SecretAgent> a owl:Class,
         sh:NodeShape ;
-    rdfs:comment "A software tool."@en ;
+    rdfs:comment "A fictional secret-agent class, used only to illustrate the file format."@en ;
     rdfs:subClassOf <https://example.org/rdf/terms/Core/Agent> ;
     sh:nodeKind sh:IRI ;
     sh:property [ sh:maxCount 1 ;
@@ -332,8 +335,8 @@ Output label in generated documents: **Instantiability: Abstract**
 #### Class constraints
 
 The optional `Constraints` heading on a class holds rules that span more than
-one of the class's properties, or that restrict the type of a node reached by
-following the class's properties. Each constraint is a single `- ` list item:
+one of the class's properties, or that restrict the type of node reached by
+following the class's properties. Each constraint is a single `-` list item:
 
 A `<path>` is one or more terms joined with `->` (a property path); a `<class>`
 list may mix allowed and forbidden (`not`) classes. Each `<term>` is a bare

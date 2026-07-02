@@ -20,7 +20,7 @@ from specmd.parse.model import Model
 
 COND_CARD_PROSE = "If the Collection has at least 1 element, then it shall have at least 1 rootElement."
 NEGATED_PROSE = "Each element shall not be of type Agent."
-PATH_TYPE_PROSE = "Each customIdToLicense's elementValue shall be of type Tool or ElementMap."
+PATH_TYPE_PROSE = "Each customIdToLicense's elementValue shall be of type SecretAgent or ElementMap."
 
 
 class TestSinglefileConstraints:

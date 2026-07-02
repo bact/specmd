@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from specmd.parse.model import Model, _parse_qualified_class
+from specmd.parse.model import Model, parse_qualified_class
 
 
 class TestModelLoading:
@@ -69,7 +69,7 @@ class TestModelLoading:
 
     def test_class_iris(self, model: Model) -> None:
         assert model.classes["/Core/Element"].iri == "https://example.org/rdf/terms/Core/Element"
-        assert model.classes["/Core/Tool"].iri == "https://example.org/rdf/terms/Core/Tool"
+        assert model.classes["/Core/SecretAgent"].iri == "https://example.org/rdf/terms/Core/SecretAgent"
 
     def test_namespace_iri(self, model: Model) -> None:
         # Namespace.iri is canonicalized to a trailing slash (e.g. ".../Core/"),
@@ -79,9 +79,9 @@ class TestModelLoading:
 
 
 class TestInheritance:
-    def test_tool_inherits_from_agent(self, model: Model) -> None:
-        tool = model.classes["/Core/Tool"]
-        assert tool.fqsupercname == "/Core/Agent"
+    def test_secret_agent_inherits_from_agent(self, model: Model) -> None:
+        secret_agent = model.classes["/Core/SecretAgent"]
+        assert secret_agent.fqsupercname == "/Core/Agent"
 
     def test_agent_inherits_from_element(self, model: Model) -> None:
         agent = model.classes["/Core/Agent"]
@@ -91,28 +91,28 @@ class TestInheritance:
         element = model.classes["/Core/Element"]
         assert element.fqsupercname is None
 
-    def test_tool_all_properties_includes_inherited(self, model: Model) -> None:
-        tool = model.classes["/Core/Tool"]
-        # spdxId and name come from Element, toolVersion and supportLevel from Tool.
-        assert "spdxId" in tool.all_properties
-        assert "name" in tool.all_properties
-        assert "toolVersion" in tool.all_properties
-        assert "supportLevel" in tool.all_properties
+    def test_secret_agent_all_properties_includes_inherited(self, model: Model) -> None:
+        secret_agent = model.classes["/Core/SecretAgent"]
+        # spdxId and name come from Element, toolVersion and supportLevel from SecretAgent.
+        assert "spdxId" in secret_agent.all_properties
+        assert "name" in secret_agent.all_properties
+        assert "toolVersion" in secret_agent.all_properties
+        assert "supportLevel" in secret_agent.all_properties
 
-    def test_tool_inheritance_stack(self, model: Model) -> None:
-        tool = model.classes["/Core/Tool"]
-        assert "/Core/Agent" in tool.inheritance_stack
-        assert "/Core/Element" in tool.inheritance_stack
+    def test_secret_agent_inheritance_stack(self, model: Model) -> None:
+        secret_agent = model.classes["/Core/SecretAgent"]
+        assert "/Core/Agent" in secret_agent.inheritance_stack
+        assert "/Core/Element" in secret_agent.inheritance_stack
 
     def test_direct_subclasses(self, model: Model) -> None:
         element = model.classes["/Core/Element"]
         assert "/Core/Agent" in element.direct_subclasses
         agent = model.classes["/Core/Agent"]
-        assert "/Core/Tool" in agent.direct_subclasses
+        assert "/Core/SecretAgent" in agent.direct_subclasses
 
     def test_class_hierarchy(self, model: Model) -> None:
         assert "/Core/Agent" in model.class_hierarchy["/Core/Element"]
-        assert "/Core/Tool" in model.class_hierarchy["/Core/Agent"]
+        assert "/Core/SecretAgent" in model.class_hierarchy["/Core/Agent"]
 
 
 class TestNamespaceOrder:
@@ -172,8 +172,8 @@ class TestInstantiability:
     def test_element_is_abstract(self, model: Model) -> None:
         assert model.classes["/Core/Element"].metadata.get("abstract") == "true"
 
-    def test_tool_is_concrete(self, model: Model) -> None:
-        assert model.classes["/Core/Tool"].metadata.get("abstract") != "true"
+    def test_secret_agent_is_concrete(self, model: Model) -> None:
+        assert model.classes["/Core/SecretAgent"].metadata.get("abstract") != "true"
 
     def test_agent_is_abstract(self, model: Model) -> None:
         assert model.classes["/Core/Agent"].metadata.get("abstract") == "true"
@@ -181,35 +181,35 @@ class TestInstantiability:
 
 class TestParseQualifiedClass:
     def test_bare_name(self) -> None:
-        assert _parse_qualified_class("Element") == ("Element", {})
+        assert parse_qualified_class("Element") == ("Element", {})
 
     def test_qualified_single_prop_single_value(self) -> None:
-        base, q = _parse_qualified_class("Relationship[relationshipType=invokedBy]")
+        base, q = parse_qualified_class("Relationship[relationshipType=invokedBy]")
         assert base == "Relationship"
         assert q == {"relationshipType": ["invokedBy"]}
 
     def test_qualified_single_prop_multi_value(self) -> None:
-        base, q = _parse_qualified_class("Relationship[relationshipType=a,b,c]")
+        base, q = parse_qualified_class("Relationship[relationshipType=a,b,c]")
         assert base == "Relationship"
         assert q == {"relationshipType": ["a", "b", "c"]}
 
     def test_qualified_multi_prop_semicolon(self) -> None:
-        base, q = _parse_qualified_class("Relationship[relationshipType=a,b,c;scope=build]")
+        base, q = parse_qualified_class("Relationship[relationshipType=a,b,c;scope=build]")
         assert base == "Relationship"
         assert q == {"relationshipType": ["a", "b", "c"], "scope": ["build"]}
 
     def test_qualified_multi_prop_single_values(self) -> None:
-        base, q = _parse_qualified_class("Foo[a=1;b=2]")
+        base, q = parse_qualified_class("Foo[a=1;b=2]")
         assert base == "Foo"
         assert q == {"a": ["1"], "b": ["2"]}
 
     def test_strips_whitespace(self) -> None:
-        base, q = _parse_qualified_class("  Agent  ")
+        base, q = parse_qualified_class("  Agent  ")
         assert base == "Agent"
         assert q == {}
 
     def test_whitespace_inside_qualifier(self) -> None:
-        base, q = _parse_qualified_class("Foo[ a = x , y ; b = z ]")
+        base, q = parse_qualified_class("Foo[ a = x , y ; b = z ]")
         assert base == "Foo"
         assert q == {"a": ["x", "y"], "b": ["z"]}
 

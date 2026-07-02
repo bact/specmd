@@ -40,9 +40,9 @@ RelationshipType is a vocabulary of directed relationships between software elem
   - to:
     - Relationship[relationshipType=invokedBy]
   - relationshipClass: LifecycleScopedRelationship
-- toolUsedBy:
-  - description: The from Tool is used by the to Agent.
-  - from: Tool
+- secretAgentUsedBy:
+  - description: The from SecretAgent is used by the to Agent.
+  - from: SecretAgent
   - to:
     - Agent
     - not Collection

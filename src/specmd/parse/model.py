@@ -67,7 +67,7 @@ def _parse_conformance_block(body: str) -> list[Conformance]:
 _RE_QUALIFIED_CLASS = re.compile(r"^([^\[]+)(?:\[([^\]]*)\])?$")
 
 
-def _parse_qualified_class(item: str) -> tuple[str, dict[str, list[str]]]:
+def parse_qualified_class(item: str) -> tuple[str, dict[str, list[str]]]:
     """Parse ``ClassName[prop1=v1,v2;prop2=v3]`` into ``(base_name, qualifiers)``.
 
     Qualifier syntax inside ``[...]``:
@@ -311,7 +311,7 @@ class Model:
         short_prop_names: set[str] = {fqn.rpartition("/")[2] for fqn in self.properties}
 
         def _check_class(name: str, loc: str, field: str) -> None:
-            base, qualifiers = _parse_qualified_class(name)
+            base, qualifiers = parse_qualified_class(name)
             if base not in short_type_names and base not in self.types:
                 logger.warning("%s: %s: unknown class %r", loc, field, base)
             for prop in qualifiers:
@@ -328,7 +328,7 @@ class Model:
                             _check_class(str(item), loc, field)
                 rel_class = entry.get("relationshipClass")
                 if rel_class and isinstance(rel_class, str):
-                    base, _ = _parse_qualified_class(rel_class)
+                    base, _ = parse_qualified_class(rel_class)
                     if base not in short_class_names and base not in self.classes:
                         logger.warning("%s: relationshipClass: unknown class %r", loc, base)
 
