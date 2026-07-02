@@ -80,6 +80,9 @@ List items: `{% endif %}` at end-of-line collapses items. Use capture pattern:
 
 Avoid `<br />` (requires MD033 allowlist). Use `&nbsp;` for indentation.
 
+Filters/globals shared across format generators (`singlefile.py`, `mkdocs.py`,
+...) live in `src/specmd/generate/utils.py`, not duplicated per module.
+
 ## Vocabulary qualifier syntax
 
 `from`/`to` entries may carry qualifiers:
@@ -90,7 +93,16 @@ ClassName[propName=v1,v2;otherProp=v3]
 ```
 
 `;` separates properties; `,` separates values. Parsed by
-`_parse_qualified_class` → `(base: str, qualifiers: dict[str, list[str]])`.
+`parse_qualified_class` (public, `specmd.parse.model`) →
+`(base: str, qualifiers: dict[str, list[str]])`.
+
+Qualifiers are enforced in generated SHACL, not just validated: `rdf.py`
+emits a nested `sh:property` shape (`sh:hasValue`/`sh:in`) scoped to the
+qualified class (`_emit_qualifier_shapes`). An ancestor/descendant pair
+listed together in the same `from`/`to` (e.g. `Element` alongside `Agent`)
+is checked via `Class.inheritance_stack` -- not hardcoded to `Element` --
+and kept but logged as redundant (and, if the descendant carries a
+qualifier, as vacuous), never silently dropped.
 
 ## Python
 
@@ -126,12 +138,23 @@ SPDX-License-Identifier: Apache-2.0  # CC0-1.0 for docs
 - `spec_parser` is not pip-installable; expose via
   `PYTHONPATH=/path/to/spec-parser pytest tests/test_shacl2code.py`.
   See README for full invocation.
+- Fixture class names mirror real SPDX 3 terms (`Agent`, `Element`, ...)
+  except where deliberately fictional -- e.g. `SecretAgent`
+  (`tests/fixtures/model/Core/Classes/SecretAgent.md`, `subClassOf: Agent`)
+  exists only to test class-hierarchy behaviour and must never be read as
+  real SPDX 3 modelling.
 
 ## Naming and IRIs
 
 - Ontology terms: consult W3C, Schema.org, SEMIC Style Guide
   (<https://semiceu.github.io/style-guide/1.0.0/index.html>).
 - IRIs: lowercase + hyphens. W3C Cool URIs: <https://www.w3.org/TR/cooluris/>.
+- `Namespace.iri` always carries a trailing slash (canonicalized at parse
+  time, even when the source `id:` metadata omits it). Term IRIs
+  (`Class.iri`, `Property.iri`, etc.) concatenate directly against it
+  (`f"{ns.iri}{name}"`) -- never insert `/` manually. Required so rdflib's
+  serializers recognize a bound namespace prefix as covering its own term
+  IRIs, instead of minting throwaway `ns1`, `ns2`, ... prefixes for them.
 
 ## Writing style
 
