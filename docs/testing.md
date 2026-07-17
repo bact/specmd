@@ -21,6 +21,7 @@ so a plain `pytest` run never fails for a missing optional dependency.
 | Test | Needs | Notes |
 | - | - | - |
 | `test_lite_conformance.py` | `pyshacl` | Validates generated SHACL against data graphs. In the `test` dependency group. |
+| `test_relationship_conformance.py` | `pyshacl` | Validates relationship-vocab (`from`/`to`/`relationshipClass`) SHACL against data graphs. |
 | `test_markdownlint.py` | `markdownlint-cli2` | Checks generated output passes, and that authored input survives `markdownlint --fix`. Install via npm. |
 | `test_shacl2code.py` | `shacl2code` + a spec-parser checkout | See below. |
 

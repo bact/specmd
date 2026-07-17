@@ -1,3 +1,5 @@
+# SPDX-FileContributor: Arthit Suriyawongkul
+# SPDX-FileType: SOURCE
 # SPDX-License-Identifier: Apache-2.0
 # pylint: disable=redefined-outer-name  # pytest fixture injection shadows module-level names
 

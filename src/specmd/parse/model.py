@@ -719,6 +719,7 @@ class Vocabulary:
                 logger.error("%s: unknown metadata key %r; expected one of: %s", fname, p, ", ".join(sorted(self.VALID_METADATA)))
 
         self.iri: str = f"{self.ns.iri}{self.name}"
+        self.default_relationship_class: str = _d.default_relationship_class
 
         self.is_relationship_vocab: bool = any(
             entry.get("from") != _d.default_from

@@ -1,3 +1,4 @@
+# SPDX-FileContributor: Arthit Suriyawongkul
 # SPDX-FileType: SOURCE
 # SPDX-License-Identifier: Apache-2.0
 
@@ -57,6 +58,13 @@ RE_POSSESSIVE_SPLIT = re.compile(r"^[A-Z]\w+\s*'s\s+(.+)")
 RE_CONSTRAINED_CLASS = re.compile(
     r"(?i:constrained to|shall be (?:a|an)|to be used with)\s+`?(/\w+/[A-Z]\w*|[A-Z]\w+)`?",
 )
+# "during a LifecycleScopeType period" (or without "period") is the SPDX 3 model's
+# documented convention for "this relationship must be a LifecycleScopedRelationship"
+# (see Build/Build.md's own explicit statement of the same convention). Unlike
+# RE_CONSTRAINED_CLASS this has no explicit class name to capture -- the target
+# class is fixed.
+RE_LIFECYCLE_SCOPED = re.compile(r"(?i:during an? LifecycleScopeType)\b")
+_LIFECYCLE_SCOPED_CLASS = "LifecycleScopedRelationship"
 
 _RE_ENTRIES_BODY = re.compile(
     r"^## Entries[ \t]*\n(.*?)(?=^##|\Z)",
@@ -172,6 +180,8 @@ def _extract_rel_entry_fields(desc: str) -> dict[str, object]:
     m_rc = RE_CONSTRAINED_CLASS.search(desc)
     if m_rc:
         result["relationshipClass"] = m_rc.group(1)
+    elif RE_LIFECYCLE_SCOPED.search(desc):
+        result["relationshipClass"] = _LIFECYCLE_SCOPED_CLASS
 
     if "from" not in result:
         return {}
