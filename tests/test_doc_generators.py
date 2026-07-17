@@ -1,3 +1,5 @@
+# SPDX-FileContributor: Arthit Suriyawongkul
+# SPDX-FileType: SOURCE
 # SPDX-License-Identifier: Apache-2.0
 
 """Tests that the documentation generators render constraints as prose.

@@ -1,3 +1,5 @@
+# SPDX-FileContributor: Arthit Suriyawongkul
+# SPDX-FileType: SOURCE
 # SPDX-License-Identifier: Apache-2.0
 
 """Tests validating SPDX 3.x example JSON-LD files."""

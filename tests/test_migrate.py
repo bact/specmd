@@ -1,3 +1,4 @@
+# SPDX-FileContributor: Arthit Suriyawongkul
 # SPDX-FileType: SOURCE
 # SPDX-License-Identifier: Apache-2.0
 
@@ -32,7 +33,9 @@ def _assert_entries_yaml_valid(out: str) -> None:
             yaml.safe_load(body)  # raises on invalid YAML
 
 
-class TestMigrateVocabEntries:
+class TestMigrateVocabEntries:  # pylint: disable=too-many-public-methods
+    # One test method per prose-parsing case; splitting the class would just scatter
+    # closely related from/to/relationshipClass extraction tests across files.
     _HEADER = "SPDX-License-Identifier: Community-Spec-1.0\n\n"
 
     def _wrap(self, entries_body: str) -> str:
@@ -87,6 +90,37 @@ class TestMigrateVocabEntries:
             "Constrained to `/Security/VexUnderInvestigationVulnAssessmentRelationship` classed relationships."
         )
         assert fields["relationshipClass"] == "/Security/VexUnderInvestigationVulnAssessmentRelationship"
+
+    def test_lifecycle_scope_period_implies_lifecycle_scoped_relationship(self) -> None:
+        # "during a LifecycleScopeType period" is SPDX 3's documented convention for
+        # "this relationship must be a LifecycleScopedRelationship" (see Build/Build.md's
+        # own explicit statement of the same rule).
+        fields = _extract_rel_entry_fields(
+            "The `from` Element (the instructions) of runs on each `to` /Hardware/Hardware "
+            "(processing element), during a LifecycleScopeType period."
+        )
+        assert fields["relationshipClass"] == "LifecycleScopedRelationship"
+
+    def test_lifecycle_scope_without_period_also_matches(self) -> None:
+        # Some entries omit "period" after "LifecycleScopeType" -- both forms count.
+        fields = _extract_rel_entry_fields(
+            "The `from` Agent is delegating an action to the Agent of the `to` Relationship, "
+            "during a LifecycleScopeType (e.g. some parenthetical)."
+        )
+        assert fields["relationshipClass"] == "LifecycleScopedRelationship"
+
+    def test_no_lifecycle_scope_mention_leaves_relationship_class_unset(self) -> None:
+        fields = _extract_rel_entry_fields("The `from` Element is amended by each `to` Element.")
+        assert "relationshipClass" not in fields
+
+    def test_explicit_constrained_to_takes_priority_over_lifecycle_scope(self) -> None:
+        # An entry naming an explicit class via "constrained to" must not be overridden
+        # even if it also happens to mention a LifecycleScopeType period.
+        fields = _extract_rel_entry_fields(
+            "The `from` Artifact has each `to` Agent, during a LifecycleScopeType period. "
+            "Constrained to `ContactPointRelationship` classed relationships."
+        )
+        assert fields["relationshipClass"] == "ContactPointRelationship"
 
     def test_from_to_backticks_are_optional(self) -> None:
         # Whether or not class names are wrapped in backticks, capture must match.

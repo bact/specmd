@@ -1,3 +1,4 @@
+# SPDX-FileContributor: Arthit Suriyawongkul
 # SPDX-FileType: SOURCE
 # SPDX-License-Identifier: Apache-2.0
 
@@ -954,12 +955,21 @@ def _emit_endpoint(model: Model, g: Graph, parent: BNode, ns_name: str, side: tu
 
 
 def _gen_relationship_constraints(model: Model, g: Graph) -> None:
-    """Emit SHACL scoping the ``from``/``to`` endpoint classes per relationship type.
+    """Emit SHACL for each relationship-type vocabulary entry.
 
-    For each entry of a relationship-type vocabulary, the relationship class is
-    constrained so that *if* its ``relationshipType`` is that entry, *then* its
-    ``from``/``to`` values must be instances of the entry's declared classes.
-    This is encoded as ``sh:or ( [not this type] [endpoints conform] )``.
+    Always attached to the vocabulary's *default* relationship class (e.g.
+    ``Relationship``), so every instance carrying this ``relationshipType`` is
+    checked -- not only instances already typed as some narrower class. The
+    consequent conjunctively requires:
+
+    - **type membership**, when the entry's ``relationshipClass`` names a class
+      other than the default (``sh:class`` on the focus node itself) -- e.g. an
+      entry documented as occurring "during a LifecycleScopeType period" must
+      actually be an instance of ``LifecycleScopedRelationship``, not merely
+      exempted from endpoint checks when it happens not to be.
+    - **endpoint typing**, when the entry declares ``from``/``to`` classes.
+
+    Encoded as ``sh:or ( [not this type] [consequent conjuncts] )``.
     """
     for vocab in model.vocabularies.values():
         if not getattr(vocab, "is_relationship_vocab", False):
@@ -968,16 +978,26 @@ def _gen_relationship_constraints(model: Model, g: Graph) -> None:
         rtype_prop = _resolve_prop_iri(model, ns_name, "relationshipType")
         if not rtype_prop:
             continue
+        default_rel_class = getattr(vocab, "default_relationship_class", "Relationship")
+        target_iri = _resolve_class_iri(model, ns_name, default_rel_class)
+        if not target_iri:
+            logger.warning("%s: default relationship class %r does not resolve", vocab.fqname, default_rel_class)
+            continue
+
         for entry_name, entry in vocab.entries.items():
+            consequent = BNode()
+            emitted = False
+
             rel_base = str(entry.get("relationshipClass", "")).split("[", 1)[0].strip()
-            rel_class_iri = _resolve_class_iri(model, ns_name, rel_base) if rel_base else None
-            if not rel_class_iri:
-                continue
+            if rel_base and rel_base != default_rel_class:
+                rel_class_iri = _resolve_class_iri(model, ns_name, rel_base)
+                if rel_class_iri:
+                    g.add((consequent, SH["class"], URIRef(rel_class_iri)))
+                    emitted = True
 
             from_classes = entry.get("from") if isinstance(entry.get("from"), list) else []
             to_classes = entry.get("to") if isinstance(entry.get("to"), list) else []
-            consequent = BNode()
-            emitted = _emit_endpoint(model, g, consequent, ns_name, ("from", from_classes))  # type: ignore[arg-type]
+            emitted = _emit_endpoint(model, g, consequent, ns_name, ("from", from_classes)) or emitted  # type: ignore[arg-type]
             emitted = _emit_endpoint(model, g, consequent, ns_name, ("to", to_classes)) or emitted  # type: ignore[arg-type]
             if not emitted:
                 continue
@@ -995,7 +1015,7 @@ def _gen_relationship_constraints(model: Model, g: Graph) -> None:
             or_list = Collection(g, None)  # type: ignore[arg-type]
             or_list.append(not_node)
             or_list.append(consequent)
-            g.add((URIRef(rel_class_iri), SH["or"], or_list.uri))
+            g.add((URIRef(target_iri), SH["or"], or_list.uri))
 
 
 def _emit_gate_not(g: Graph, prof_iri: str, gate_iris: list[str], *, require_present: bool = False) -> BNode:
