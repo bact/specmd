@@ -1,3 +1,5 @@
+# SPDX-FileContributor: Arthit Suriyawongkul
+# SPDX-FileType: SOURCE
 # SPDX-License-Identifier: Apache-2.0
 
 """Tests for RDF generation."""
@@ -597,6 +599,39 @@ class TestRelationshipConstraints:
         assert endpoints.get("to") == {URIRef(CORE + "Agent")}
         assert to_neg == {URIRef(CORE + "Collection")}
 
+    def test_narrower_relationship_class_attaches_to_default_not_narrower(self, rdf_graph: Graph) -> None:
+        # `delegatedTo` names `relationshipClass: LifecycleScopedRelationship` (narrower than the
+        # vocabulary default `Relationship`). Option B: the shape must still attach to the
+        # *default* class -- :Relationship -- so every instance with this relationshipType is
+        # checked, not only ones already typed as the narrower class. Nothing should attach
+        # directly to :LifecycleScopedRelationship.
+        from rdflib.collection import Collection as RDFList
+
+        rel = URIRef(CORE + "Relationship")
+        lsr = URIRef(CORE + "LifecycleScopedRelationship")
+        rtype = URIRef(CORE + "RelationshipType/delegatedTo")
+
+        assert list(rdf_graph.objects(lsr, SH["or"])) == [], "must not attach directly to the narrower class"
+
+        target = None
+        for or_list in rdf_graph.objects(rel, SH["or"]):
+            branches = list(RDFList(rdf_graph, or_list))
+            keys_off = any(
+                (ps, SH["hasValue"], rtype) in rdf_graph
+                for b in branches
+                for n in rdf_graph.objects(b, SH["not"])
+                for ps in rdf_graph.objects(n, SH.property)
+            )
+            if keys_off:
+                target = branches
+        assert target is not None, "no relationship constraint scoped to delegatedTo, attached to :Relationship"
+
+        # The consequent branch (the one without sh:not) must carry sh:class LifecycleScopedRelationship
+        # directly on the focus node -- conjunctive with (not nested inside) the endpoint typing.
+        consequent = next(b for b in target if (b, SH["not"], None) not in rdf_graph)
+        assert (consequent, SH["class"], lsr) in rdf_graph, "consequent must require rdf:type LifecycleScopedRelationship"
+        assert any(rdf_graph.objects(consequent, SH.property)), "consequent must also carry endpoint typing"
+
     def test_bracket_qualifier_is_enforced_not_dropped(self, model: Model) -> None:
         # `Relationship[relationshipType=invokedBy]` must constrain the endpoint's own
         # relationshipType, not just reduce to a bare `sh:class Relationship`.
@@ -609,7 +644,7 @@ class TestRelationshipConstraints:
         ctx = _EmitCtx(model, g, "Core")
         shapes = _emit_qualifier_shapes(ctx, pos[0].fq, pos[0].qualifiers)
         assert len(shapes) == 1
-        (shape,) = shapes
+        shape = shapes[0]
         assert (shape, SH.path, URIRef(CORE + "relationshipType")) in g
         assert (shape, SH["hasValue"], URIRef(CORE + "RelationshipType/invokedBy")) in g
 
@@ -629,7 +664,9 @@ class TestRelationshipConstraints:
         pos, _neg = _endpoint_class_iris(model, "Core", ["Relationship[relationshipType=invokedBy,affects]"])
         g = Graph()
         ctx = _EmitCtx(model, g, "Core")
-        (shape,) = _emit_qualifier_shapes(ctx, pos[0].fq, pos[0].qualifiers)
+        shapes = _emit_qualifier_shapes(ctx, pos[0].fq, pos[0].qualifiers)
+        assert len(shapes) == 1
+        shape = shapes[0]
         (in_list,) = list(g.objects(shape, SH["in"]))
         from rdflib.collection import Collection as RDFList
 

@@ -1,3 +1,5 @@
+# SPDX-FileContributor: Arthit Suriyawongkul
+# SPDX-FileType: SOURCE
 # SPDX-License-Identifier: Apache-2.0
 
 """Tests for specmd model."""
@@ -18,7 +20,7 @@ class TestModelLoading:
         assert model.namespaces[0].name == "Core"
 
     def test_class_count(self, model: Model) -> None:
-        assert len(model.classes) == 11
+        assert len(model.classes) == 12
 
     def test_property_count(self, model: Model) -> None:
         assert len(model.properties) == 16
