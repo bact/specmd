@@ -1409,7 +1409,9 @@ def _jsonld_context(g: Graph, uri_base: str) -> dict[str, Any]:
 
         remainder = s[len(uri_base_stripped) + 1 :]
         parts = remainder.split("/", 1)
-        if len(parts) != 2:
+        # Skip namespace IRIs (".../Core/"): their name part is empty, and
+        # JSON-LD 1.1 forbids an empty term.
+        if len(parts) != 2 or not parts[1]:
             continue
         ns, name = parts
 

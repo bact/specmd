@@ -208,6 +208,12 @@ class TestJSONLDContext:
         assert entry["@id"] == "@type"
         assert entry.get("@protected") is True
 
+    def test_no_empty_term(self, ctx: dict) -> None:
+        # Namespace IRIs (e.g. ".../Core/") are graph subjects because of
+        # their VANN annotations; they must not become an empty term, which
+        # JSON-LD 1.1 forbids.
+        assert "" not in ctx["@context"]
+
     def test_data_property_has_at_type(self, ctx: dict) -> None:
         # name is DataProperty → should have @type pointing to xsd:string.
         name_entry = ctx["@context"].get("name")
