@@ -214,6 +214,19 @@ class TestJSONLDContext:
         # JSON-LD 1.1 forbids.
         assert "" not in ctx["@context"]
 
+    def test_no_namespace_prefix_term(self, rdf_graph: Graph, model: Model) -> None:
+        # A non-Core namespace IRI (".../AI/") would become a term like "ai_";
+        # only the "spdx" prefix may map to a namespace.
+        from rdflib import Literal
+
+        from specmd.generate.rdf import _jsonld_context
+
+        g = Graph()
+        g += rdf_graph
+        g.add((URIRef(BASE + "AI/"), VANN.preferredNamespacePrefix, Literal("ai")))
+        ctx = _jsonld_context(g, model.base_uri)
+        assert not [key for key in ctx["@context"] if key.endswith("_")]
+
     def test_data_property_has_at_type(self, ctx: dict) -> None:
         # name is DataProperty → should have @type pointing to xsd:string.
         name_entry = ctx["@context"].get("name")
