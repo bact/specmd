@@ -234,6 +234,49 @@ class TestJSONLDContext:
         assert "noSupport" in local_ctx
 
 
+class TestJSONLDContextVocabTermCollision:
+    """A vocabulary entry named like a top-level term must still expand to the entry.
+
+    E.g. ProfileIdentifierType "extension" vs the "extension" property.
+    """
+
+    @staticmethod
+    @pytest.fixture(scope="class")
+    def ctx() -> dict:
+        from rdflib import BNode
+        from rdflib.collection import Collection
+
+        from specmd.generate.rdf import _jsonld_context
+
+        g = Graph()
+        vocab = URIRef(CORE + "ProfileIdentifierType")
+        entry = URIRef(CORE + "ProfileIdentifierType/extension")
+        prop = URIRef(CORE + "profileConformance")
+        g.add((vocab, RDF.type, OWL.Class))
+        g.add((entry, RDF.type, OWL.NamedIndividual))
+        g.add((entry, RDF.type, vocab))
+        g.add((prop, RDF.type, OWL.ObjectProperty))
+        g.add((prop, RDFS.range, vocab))
+        g.add((URIRef(CORE + "extension"), RDF.type, OWL.DatatypeProperty))
+        g.add((URIRef(CORE + "extension"), RDFS.range, URIRef("http://www.w3.org/2001/XMLSchema#string")))
+        shape = BNode()
+        lst = Collection(g, BNode(), [entry])
+        g.add((shape, SH["in"], lst.uri))
+        return _jsonld_context(g, BASE)
+
+    def test_colliding_term_is_not_protected(self, ctx: dict) -> None:
+        assert "@protected" not in ctx["@context"]["extension"]
+
+    def test_other_terms_stay_protected(self, ctx: dict) -> None:
+        assert ctx["@context"]["profileConformance"].get("@protected") is True
+
+    def test_entry_expands_to_vocabulary_iri(self, ctx: dict) -> None:
+        doc = {**ctx, "@id": "http://example.org/x", "profileConformance": "extension"}
+        g = Graph().parse(data=json.dumps(doc), format="json-ld")
+        values = [str(o) for o in g.objects(None, URIRef(CORE + "profileConformance"))]
+        assert values == [CORE + "ProfileIdentifierType/extension"]
+
+
 class TestRDFPrefixes:
     def test_ontology_prefix_bound(self, rdf_graph: Graph) -> None:
         # fixture specmd.yml sets preferred-namespace-prefix: core

@@ -1434,4 +1434,24 @@ def _jsonld_context(g: Graph, uri_base: str) -> dict[str, Any]:
     terms["spdxId"] = {"@id": "@id", "@protected": True}
     terms["type"] = {"@id": "@type", "@protected": True}
 
+    _unprotect_vocab_entry_collisions(terms, vocab_entries)
+
     return {"@context": terms}
+
+
+def _unprotect_vocab_entry_collisions(terms: dict[str, dict[str, Any]], vocab_entries: dict[str, dict[str, str]]) -> None:
+    """Drop ``@protected`` from top-level terms named like a vocabulary entry.
+
+    A vocabulary entry with the same name as a top-level term (e.g.
+    ProfileIdentifierType ``extension`` and the ``extension`` property) is
+    mapped by the property's scoped ``@context``. JSON-LD 1.1 lets a
+    property-scoped context override a protected term, but rdflib does not,
+    and then expands the value to the top-level term instead of the entry.
+    """
+    entry_names = {name for entries in vocab_entries.values() for name in entries}
+    for key in sorted(entry_names & terms.keys()):
+        if terms[key].pop("@protected", None):
+            logger.warning(
+                "Vocabulary entry name %r is also a top-level JSON-LD term; the term is left unprotected so the entry can be mapped.",
+                key,
+            )
