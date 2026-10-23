@@ -234,6 +234,15 @@ class TestJSONLDContext:
         assert "noSupport" in local_ctx
 
 
+class TestSHACLTargets:
+    def test_every_class_shape_targets_its_class(self, rdf_graph: Graph) -> None:
+        # The implicit class target needs rdfs:Class; owl:Class alone is not
+        # enough outside pySHACL, so each class shape names its target.
+        shapes = {s for s in rdf_graph.subjects(RDF.type, SH.NodeShape) if (s, RDF.type, OWL.Class) in rdf_graph}
+        assert shapes
+        assert all((s, SH.targetClass, s) in rdf_graph for s in shapes)
+
+
 class TestRDFPrefixes:
     def test_ontology_prefix_bound(self, rdf_graph: Graph) -> None:
         # fixture specmd.yml sets preferred-namespace-prefix: core

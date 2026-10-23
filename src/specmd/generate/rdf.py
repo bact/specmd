@@ -419,6 +419,10 @@ def _gen_classes(model: Model, g: Graph, seen: set[tuple[str, object]]) -> None:
 
         # Every class is also a sh:NodeShape so all constraints are visible to SHACL processors.
         g.add((node, RDF.type, SH.NodeShape))
+        # SHACL's implicit class target needs the shape to be a SHACL instance of
+        # rdfs:Class; an owl:Class is one only in engines that assume
+        # owl:Class rdfs:subClassOf rdfs:Class (pySHACL). Target explicitly.
+        g.add((node, SH.targetClass, node))
         if "spdxId" in c.all_properties:
             g.add((node, SH.nodeKind, SH.IRI))
         else:
