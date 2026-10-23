@@ -1455,6 +1455,15 @@ def _unprotect_vocab_entry_collisions(terms: dict[str, dict[str, Any]], vocab_en
     layered ``@context`` can redefine them. Keyword aliases (``spdxId``,
     ``type``) and the ``spdx`` prefix are never unprotected.
     """
+    # An entry named like the property it is a value of cannot be mapped in
+    # that property's scoped context: the scoped term would replace the
+    # property term in that scope, without its @type @vocab.
+    for key, term in terms.items():
+        local_ctx = term.get("@context")
+        if term.get("@type") == "@vocab" and isinstance(local_ctx, dict) and key in local_ctx:
+            del local_ctx[key]
+            logger.error("Vocabulary entry %r is named like the property it is a value of; rename the entry.", key)
+
     entry_names = {name for entries in vocab_entries.values() for name in entries}
     for key in sorted(entry_names & terms.keys()):
         if key in {"spdxId", "type", "spdx"}:

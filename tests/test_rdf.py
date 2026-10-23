@@ -297,6 +297,29 @@ class TestJSONLDContextVocabTermCollision:
         ctx = _jsonld_context(g, BASE)
         assert ctx["@context"]["type"] == {"@id": "@type", "@protected": True}
 
+    def test_entry_named_like_its_property_is_an_error(self, caplog: pytest.LogCaptureFixture) -> None:
+        from rdflib import BNode
+        from rdflib.collection import Collection
+
+        from specmd.generate.rdf import _jsonld_context
+
+        g = Graph()
+        vocab = URIRef(CORE + "KindType")
+        entry = URIRef(CORE + "KindType/kind")
+        prop = URIRef(CORE + "kind")
+        g.add((vocab, RDF.type, OWL.Class))
+        g.add((entry, RDF.type, OWL.NamedIndividual))
+        g.add((entry, RDF.type, vocab))
+        g.add((prop, RDF.type, OWL.ObjectProperty))
+        g.add((prop, RDFS.range, vocab))
+        shape = BNode()
+        lst = Collection(g, BNode(), [entry])
+        g.add((shape, SH["in"], lst.uri))
+        with caplog.at_level("ERROR"):
+            ctx = _jsonld_context(g, BASE)
+        assert "kind" not in ctx["@context"]["kind"]["@context"]
+        assert any("named like the property" in r.getMessage() for r in caplog.records)
+
 
 class TestRDFPrefixes:
     def test_ontology_prefix_bound(self, rdf_graph: Graph) -> None:
