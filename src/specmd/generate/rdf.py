@@ -1444,12 +1444,22 @@ def _unprotect_vocab_entry_collisions(terms: dict[str, dict[str, Any]], vocab_en
 
     A vocabulary entry with the same name as a top-level term (e.g.
     ProfileIdentifierType ``extension`` and the ``extension`` property) is
-    mapped by the property's scoped ``@context``. JSON-LD 1.1 lets a
-    property-scoped context override a protected term, but rdflib does not,
-    and then expands the value to the top-level term instead of the entry.
+    mapped by the property's scoped ``@context``. For scalar values, the
+    JSON-LD 1.1 Expansion Algorithm (step 4.2) processes that scoped context
+    without "override protected", so redefining a protected term there is a
+    protected term redefinition error, for every value of the property.
+    pyld and jsonld.js override anyway; rdflib keeps the top-level term and
+    expands the value to the wrong IRI.
+
+    This deliberately weakens protection for the colliding terms only: a
+    layered ``@context`` can redefine them. Keyword aliases (``spdxId``,
+    ``type``) and the ``spdx`` prefix are never unprotected.
     """
     entry_names = {name for entries in vocab_entries.values() for name in entries}
     for key in sorted(entry_names & terms.keys()):
+        if key in {"spdxId", "type", "spdx"}:
+            logger.error("Vocabulary entry name %r collides with a reserved JSON-LD term; rename the entry.", key)
+            continue
         if terms[key].pop("@protected", None):
             logger.warning(
                 "Vocabulary entry name %r is also a top-level JSON-LD term; the term is left unprotected so the entry can be mapped.",

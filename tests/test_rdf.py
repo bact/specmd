@@ -276,6 +276,27 @@ class TestJSONLDContextVocabTermCollision:
         values = [str(o) for o in g.objects(None, URIRef(CORE + "profileConformance"))]
         assert values == [CORE + "ProfileIdentifierType/extension"]
 
+    def test_keyword_alias_stays_protected(self) -> None:
+        from rdflib import BNode
+        from rdflib.collection import Collection
+
+        from specmd.generate.rdf import _jsonld_context
+
+        g = Graph()
+        vocab = URIRef(CORE + "SomeType")
+        entry = URIRef(CORE + "SomeType/type")
+        prop = URIRef(CORE + "someProperty")
+        g.add((vocab, RDF.type, OWL.Class))
+        g.add((entry, RDF.type, OWL.NamedIndividual))
+        g.add((entry, RDF.type, vocab))
+        g.add((prop, RDF.type, OWL.ObjectProperty))
+        g.add((prop, RDFS.range, vocab))
+        shape = BNode()
+        lst = Collection(g, BNode(), [entry])
+        g.add((shape, SH["in"], lst.uri))
+        ctx = _jsonld_context(g, BASE)
+        assert ctx["@context"]["type"] == {"@id": "@type", "@protected": True}
+
 
 class TestRDFPrefixes:
     def test_ontology_prefix_bound(self, rdf_graph: Graph) -> None:
